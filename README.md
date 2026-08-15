@@ -1,7 +1,7 @@
 # OfficeAgent.Studio
 
 A demo agent that writes .pptx decks and .docx documents which look like a design studio made
-them — built on [OfficeAgent.NET](https://github.com/ilia-sokolov/OfficeAgent.NET) and the
+them - built on [OfficeAgent.NET](https://github.com/ilia-sokolov/OfficeAgent.NET) and the
 [Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
 
 ```bash
@@ -18,8 +18,8 @@ lines up with anything.
 
 This splits the job in two.
 
-**The model decides what the document says.** It returns content as JSON — a slide's role, its
-title, its bullets, its number — and it is told explicitly that anything it says about fonts,
+**The model decides what the document says.** It returns content as JSON - a slide's role, its
+title, its bullets, its number - and it is told explicitly that anything it says about fonts,
 colours, sizes or positions is ignored.
 
 **`DesignSystem` decides how it looks.** One ink, one accent, one wash. Two faces: Georgia to
@@ -48,10 +48,10 @@ A deck of 8–10 slides, composed from these roles:
 And a document of 12–18 blocks: a title page of its own, then headings, paragraphs, hanging
 bullets, one pull quote with an accent rule down its left edge, and one table ruled only
 under its header row. A running head carries the title, the footer carries the client and a
-page number at opposite edges, and a wash sits behind every page at 35% — all of it kept off
+page number at opposite edges, and a wash sits behind every page at 35% - all of it kept off
 the cover, which has its own blank header.
 
-Every slide shares one vertical rhythm — eyebrow, accent rule, title, content — derived from a
+Every slide shares one vertical rhythm - eyebrow, accent rule, title, content - derived from a
 single anchor per slide kind, so the eyebrow and the rule cannot collide however long a title
 turns out to be.
 
@@ -70,8 +70,8 @@ src/OfficeAgent.Studio/
 ```
 
 `Backdrop.cs` is there so the repository carries no binary assets: a demo that shipped a
-stock photograph would be demonstrating the photograph. It writes a PNG by hand — header,
-one deflated IDAT, CRCs — and the gradient it draws comes from `DesignSystem`, so changing
+stock photograph would be demonstrating the photograph. It writes a PNG by hand - header,
+one deflated IDAT, CRCs - and the gradient it draws comes from `DesignSystem`, so changing
 the accent changes the cover too.
 
 `DesignSystem.cs` is the file to edit first. Change `Accent`, `DisplayFont` and `Margin` and the
@@ -93,7 +93,7 @@ var agent = new StudioAgent(
 ## Requirements
 
 - .NET 8 SDK
-- OfficeAgent.NET 0.6.0 or later — this uses slide backgrounds, shape fills, vertical text
+- OfficeAgent.NET 0.6.0 or later - this uses slide backgrounds, shape fills, vertical text
   anchoring, `backgroundImage`, Word headers and footers, page breaks, hanging indents and
   single-edge borders
 - For the default model: the [Claude Code](https://claude.com/claude-code) CLI, signed in
@@ -108,7 +108,7 @@ Two things about driving OfficeAgent are worth taking away, because both are eas
 and neither is obvious:
 
 **A shape's id does not exist until the plan that created it has been applied.** So a slide is
-composed over several plans — insert, re-inspect, then style what came back — rather than one.
+composed over several plans - insert, re-inspect, then style what came back - rather than one.
 `NewestShapeAsync` is that pattern.
 
 **Address paragraphs by the id you recorded when you wrote them, never by position.** A table
