@@ -101,17 +101,3 @@ var agent = new StudioAgent(
 The project references the OfficeAgent working tree when it finds one beside this repo, and
 falls back to the NuGet packages otherwise. See the comments in
 `src/OfficeAgent.Studio/OfficeAgent.Studio.csproj`.
-
-## Notes for anyone reading the composer
-
-Two things about driving OfficeAgent are worth taking away, because both are easy to get wrong
-and neither is obvious:
-
-**A shape's id does not exist until the plan that created it has been applied.** So a slide is
-composed over several plans - insert, re-inspect, then style what came back - rather than one.
-`NewestShapeAsync` is that pattern.
-
-**Address paragraphs by the id you recorded when you wrote them, never by position.** A table
-leaves a paragraph behind it and a bullets block writes several, so any position you compute up
-front is wrong further down the document. `DocumentComposer` keeps a list of
-`(ParaId, Role)` as it writes, and styles from that.
