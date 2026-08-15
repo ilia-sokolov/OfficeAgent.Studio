@@ -93,7 +93,7 @@ var agent = new StudioAgent(
 ## Requirements
 
 - .NET 8 SDK
-- OfficeAgent.NET 0.5.0 or later — this uses slide backgrounds, shape fills, vertical text
+- OfficeAgent.NET 0.6.0 or later — this uses slide backgrounds, shape fills, vertical text
   anchoring, `backgroundImage`, Word headers and footers, page breaks, hanging indents and
   single-edge borders
 - For the default model: the [Claude Code](https://claude.com/claude-code) CLI, signed in
