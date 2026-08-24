@@ -86,7 +86,7 @@ public sealed class InvoiceComposer
         // The table of billable lines, then the totals stacked under it.
         await AppendTableAsync(id, invoice, ct);
 
-        foreach (var (label, amount, strong) in Totals(invoice))
+        foreach (var (label, amount, strong) in InvoiceMath.Totals(invoice))
             lines.Add((await AppendAsync(id, $"{label}    {Money(invoice.Currency, amount)}", ct),
                 strong ? "total" : "subtotal"));
 
@@ -117,23 +117,7 @@ public sealed class InvoiceComposer
         return id;
     }
 
-    /// <summary>
-    /// Subtotal, tax and total, computed here. Every amount on the page is derived from the
-    /// line items, so the arithmetic cannot disagree with itself.
-    /// </summary>
-    private static IEnumerable<(string Label, double Amount, bool Strong)> Totals(InvoicePlanned invoice)
-    {
-        var subtotal = invoice.Lines.Sum(l => l.Quantity * l.UnitPrice);
-        yield return ("Subtotal", subtotal, false);
-
-        var tax = subtotal * (invoice.TaxRatePercent / 100.0);
-        if (invoice.TaxRatePercent > 0)
-            yield return ($"{invoice.TaxLabel} at {invoice.TaxRatePercent:0.##}%", tax, false);
-
-        yield return ("Total due", subtotal + tax, true);
-    }
-
-    private static string Money(string currency, double amount) =>
+    private static string Money(string currency, decimal amount) =>
         currency + amount.ToString("N2", CultureInfo.InvariantCulture);
 
     private async Task AppendTableAsync(string id, InvoicePlanned invoice, CancellationToken ct)
@@ -144,7 +128,7 @@ public sealed class InvoiceComposer
                 l.Unit is { Length: > 0 } unit ? $"{l.Description} ({unit})" : l.Description,
                 l.Quantity.ToString("0.##", CultureInfo.InvariantCulture),
                 Money(invoice.Currency, l.UnitPrice),
-                Money(invoice.Currency, l.Quantity * l.UnitPrice)
+                Money(invoice.Currency, InvoiceMath.LineTotal(l))
             })
             .ToList();
 

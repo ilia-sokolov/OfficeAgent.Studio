@@ -15,22 +15,50 @@
   </ItemGroup>
 
   <!--
-    Built against the OfficeAgent working tree, because the slide fill and background this
-    demo relies on land in 0.5.0 and are not on NuGet yet. Once 0.5.0 ships, delete this
-    block and uncomment the package references below - nothing else in the project changes.
+    OfficeAgent comes from a sibling checkout when there is one, and from NuGet otherwise.
+
+    The path is anchored to this file rather than to the working directory, because a
+    relative path that depends on where you happened to run dotnet from breaks the moment
+    the repository is cloned one level deeper - and it breaks silently, since a
+    ProjectReference inside a failed Exists() condition simply disappears and leaves you
+    reading fifty "type or namespace does not exist" errors instead of one useful one.
   -->
-  <ItemGroup Condition="Exists('..\..\..\OfficeAgent.NET\OfficeAgent.NET\src\OfficeAgent.Core\OfficeAgent.Core.csproj')">
-    <ProjectReference Include="..\..\..\OfficeAgent.NET\OfficeAgent.NET\src\OfficeAgent.Core\OfficeAgent.Core.csproj" />
-    <ProjectReference Include="..\..\..\OfficeAgent.NET\OfficeAgent.NET\src\OfficeAgent.Word\OfficeAgent.Word.csproj" />
-    <ProjectReference Include="..\..\..\OfficeAgent.NET\OfficeAgent.NET\src\OfficeAgent.PowerPoint\OfficeAgent.PowerPoint.csproj" />
+  <PropertyGroup>
+    <!--
+      Candidate locations, in order. The first is the ordinary case: OfficeAgent.NET cloned
+      beside this repository. The others cover the layout where either repository is nested
+      one level inside a folder of its own name, which is what a GitHub Desktop clone into
+      an existing folder produces.
+    -->
+    <_OfficeAgentSibling>$(MSBuildThisFileDirectory)..\..\..\OfficeAgent.NET\src</_OfficeAgentSibling>
+    <_OfficeAgentNestedBoth>$(MSBuildThisFileDirectory)..\..\..\..\OfficeAgent.NET\OfficeAgent.NET\src</_OfficeAgentNestedBoth>
+    <_OfficeAgentNestedSelf>$(MSBuildThisFileDirectory)..\..\..\..\OfficeAgent.NET\src</_OfficeAgentNestedSelf>
+
+    <OfficeAgentSource Condition="Exists('$(_OfficeAgentSibling)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentSibling)</OfficeAgentSource>
+    <OfficeAgentSource Condition="'$(OfficeAgentSource)' == '' And Exists('$(_OfficeAgentNestedBoth)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentNestedBoth)</OfficeAgentSource>
+    <OfficeAgentSource Condition="'$(OfficeAgentSource)' == '' And Exists('$(_OfficeAgentNestedSelf)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentNestedSelf)</OfficeAgentSource>
+
+    <UseOfficeAgentSource Condition="'$(OfficeAgentSource)' != ''">true</UseOfficeAgentSource>
+    <OfficeAgentVersion>0.6.0</OfficeAgentVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseOfficeAgentSource)' == 'true'">
+    <ProjectReference Include="$(OfficeAgentSource)\OfficeAgent.Core\OfficeAgent.Core.csproj" />
+    <ProjectReference Include="$(OfficeAgentSource)\OfficeAgent.Word\OfficeAgent.Word.csproj" />
+    <ProjectReference Include="$(OfficeAgentSource)\OfficeAgent.PowerPoint\OfficeAgent.PowerPoint.csproj" />
   </ItemGroup>
 
-  <!--
-  <ItemGroup>
-    <PackageReference Include="OfficeAgent.Core" Version="0.5.0" />
-    <PackageReference Include="OfficeAgent.Word" Version="0.5.0" />
-    <PackageReference Include="OfficeAgent.PowerPoint" Version="0.5.0" />
+  <ItemGroup Condition="'$(UseOfficeAgentSource)' != 'true'">
+    <PackageReference Include="OfficeAgent.Core" Version="$(OfficeAgentVersion)" />
+    <PackageReference Include="OfficeAgent.Word" Version="$(OfficeAgentVersion)" />
+    <PackageReference Include="OfficeAgent.PowerPoint" Version="$(OfficeAgentVersion)" />
   </ItemGroup>
-  -->
+
+  <Target Name="ReportOfficeAgentSource" BeforeTargets="Build">
+    <Message Importance="high" Condition="'$(UseOfficeAgentSource)' == 'true'"
+             Text="OfficeAgent: building against the sibling checkout at $(OfficeAgentSource)" />
+    <Message Importance="high" Condition="'$(UseOfficeAgentSource)' != 'true'"
+             Text="OfficeAgent: building against NuGet packages $(OfficeAgentVersion)" />
+  </Target>
 
 </Project>

@@ -76,6 +76,10 @@ public sealed class DeckComposer
             Content: top + 66 + titleHeight + 30);
     }
 
+    /// <summary>An eyebrow in the case the brand asks for.</summary>
+    private string Eyebrow(string text) =>
+        _design.EyebrowUppercase ? text.ToUpperInvariant() : text;
+
     /// <summary>The eyebrow's own box. Kept under the gap to the rule so it cannot cross it.</summary>
     private const int EyebrowHeight = 30;
 
@@ -170,8 +174,8 @@ public sealed class DeckComposer
                 _design.TextFont, _design.MutedReverse, ct);
 
         if (cover.Eyebrow is { Length: > 0 } eyebrow)
-            await AddTextAsync(id, slideId, eyebrow.ToUpperInvariant(), frame.Eyebrow,
-                _design.CaptionSize, _design.TextFont, _design.Accent, ct, EyebrowHeight);
+            await AddTextAsync(id, slideId, Eyebrow(eyebrow), frame.Eyebrow,
+                _design.CaptionSize, _design.TextFont, _design.AccentReverse, ct, EyebrowHeight);
     }
 
     // ── the rest ──────────────────────────────────────────────────────────────
@@ -242,9 +246,9 @@ public sealed class DeckComposer
         await AddRuleAsync(id, slideId, frame.Rule, _design.Accent, ct);
 
         if (slide.Eyebrow is { Length: > 0 } eyebrow)
-            await AddTextAsync(id, slideId, eyebrow.ToUpperInvariant(), frame.Eyebrow,
+            await AddTextAsync(id, slideId, Eyebrow(eyebrow), frame.Eyebrow,
                 _design.CaptionSize, _design.TextFont,
-                reverse ? _design.Accent : _design.Muted, ct, EyebrowHeight);
+                reverse ? _design.AccentReverse : _design.Muted, ct, EyebrowHeight);
 
         switch (slide.Kind)
         {

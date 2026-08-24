@@ -40,7 +40,7 @@ public sealed record InvoicePlanned
 
     /// <summary>Tax rate as a percentage, e.g. 20 for 20%. Zero omits the tax line.</summary>
     [JsonPropertyName("taxRatePercent")]
-    public double TaxRatePercent { get; init; }
+    public decimal TaxRatePercent { get; init; }
 
     [JsonPropertyName("taxLabel")]
     public string TaxLabel { get; init; } = "VAT";
@@ -74,13 +74,13 @@ public sealed record LineItemPlanned
     public required string Description { get; init; }
 
     [JsonPropertyName("quantity")]
-    public double Quantity { get; init; } = 1;
+    public decimal Quantity { get; init; } = 1;
 
     [JsonPropertyName("unit")]
     public string? Unit { get; init; }
 
     [JsonPropertyName("unitPrice")]
-    public double UnitPrice { get; init; }
+    public decimal UnitPrice { get; init; }
 }
 
 // ── manual ────────────────────────────────────────────────────────────────────

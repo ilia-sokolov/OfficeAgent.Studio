@@ -17,46 +17,83 @@ public sealed record DesignSystem
     public static readonly DesignSystem Default = new();
 
     /// <summary>
-    /// Dotaction's brand, taken from the CSS custom properties published on dotaction.io.
+    /// A second, invented brand: a worked example of what a real one looks like.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The site names its palette in the stylesheet - <c>--ink</c>, <c>--paper</c>,
-    /// <c>--signal</c>, <c>--muted</c> - so nothing here is a guess about intent. Two of the
-    /// tokens map straight onto the accent split this system already keeps: <c>--signal</c>
-    /// (#F04B2F) reaches only 3.2:1 on paper and is a mark rather than a word, while
-    /// <c>--signal-dark</c> (#BD2D18) reaches 5.2:1 and can carry text. The brand ships both
-    /// for the same reason.
+    /// It exists so the registry has more than one entry. A contrast suite driven by
+    /// <see cref="Brands"/> proves nothing about your palette if the only palette it has
+    /// ever measured is the one it was tuned against, and a rebranding claim backed by a
+    /// single brand is a claim with no evidence behind it.
     /// </para>
     /// <para>
-    /// The face is Arial throughout, because the site's headline is Arial Bold rather than
-    /// a serif: the hierarchy is carried by weight and size, not by a change of voice.
+    /// It is deliberately unlike <see cref="Default"/> in every dimension the system
+    /// controls - a cooler ink, a blue rather than an orange accent, sans display type
+    /// instead of serif - so a run under this name is visibly a different document rather
+    /// than the same one in a slightly different colour.
+    /// </para>
+    /// <para>
+    /// Note what the accent pair does here. <c>Accent</c> reaches 6.9:1 on paper, which is
+    /// readable as small text, so <c>AccentText</c> is set to the same value: the pair
+    /// exists so a bright mark <em>can</em> have a darker twin, not so that every brand
+    /// must own two blues.
     /// </para>
     /// </remarks>
-    public static readonly DesignSystem Dotaction = Default with
+    public static readonly DesignSystem Meridian = Default with
     {
-        Ink = "151515",           // --ink
-        InkDeep = "2A2926",       // derived: a warmer ink so a dark ground has depth
-        Paper = "FBFAF6",         // --paper-bright
-        Wash = "F2F0E9",          // --paper
-        WashDeep = "EAE7DD",      // derived from --paper, for the page backdrop
-        Body = "151515",          // --ink; the site sets body copy in it too
-        Muted = "67645F",         // --muted, 5.2:1 on paper
-        MutedReverse = "B9B9B9",  // the site's 70%-white-on-ink, as a solid
-        Accent = "F04B2F",        // --signal: the dot, the rules, the fills
-        AccentText = "BD2D18",    // --signal-dark: the accent where it has to be read
-        Reverse = "FBFAF6",       // --paper-bright, not pure white
-        DisplayFont = "Arial",
-        TextFont = "Arial",
-        Wordmark = "dotaction"
+        Ink = "10151F",
+        InkDeep = "1E2635",       // a cooler deep ink, so the cover gradient has somewhere to go
+        Paper = "FFFFFF",
+        Wash = "EFF2F6",
+        WashDeep = "DFE5EE",
+        Body = "1A2030",
+        Muted = "5A6478",         // 5.6:1 on paper
+        MutedReverse = "AEB8C9",  // 8.9:1 on ink
+        Accent = "0057B8",        // 6.9:1 on paper: a mark that also reads as a word
+        AccentText = "0057B8",    // no darker twin needed - see the remarks
+        AccentReverse = "6FA8FF", // lightened, for text on the ink cover
+        Reverse = "FFFFFF",
+        DisplayFont = "Verdana",
+        TextFont = "Verdana",
+        Wordmark = "meridian"
     };
 
-    /// <summary>Looks a brand up by name for the CLI. Unknown names fall back to the default.</summary>
-    public static DesignSystem ByName(string? name) => name?.Trim().ToLowerInvariant() switch
+    /// <summary>
+    /// Every brand this build knows, by the name the CLI accepts. Add yours here and two
+    /// things follow: <see cref="ByName"/> can find it, and the contrast tests check it.
+    /// </summary>
+    /// <remarks>
+    /// A registry rather than a switch, because a switch is invisible to a test. The whole
+    /// promise of the contrast suite - that it will tell you your palette is unreadable
+    /// before your reader does - only holds if adding a brand is enough to get it measured.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, DesignSystem> Brands { get; } =
+        new Dictionary<string, DesignSystem>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["default"] = Default,
+            ["meridian"] = Meridian
+        };
+
+    /// <summary>
+    /// Looks a brand up by name. An empty name is the default; an unknown one throws.
+    /// </summary>
+    /// <remarks>
+    /// Falling back silently would mean a typo in <c>OFFICEAGENT_STUDIO_BRAND</c> produced a
+    /// correct-looking run in the wrong brand, which is the one failure nobody checks for.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The name is not one of <see cref="Brands"/>.</exception>
+    public static DesignSystem ByName(string? name)
     {
-        "dotaction" => Dotaction,
-        _ => Default
-    };
+        if (string.IsNullOrWhiteSpace(name)) return Default;
+
+        if (Brands.TryGetValue(name!.Trim(), out var brand)) return brand;
+
+        // No paramName: this message is printed to a person running the CLI, and
+        // ArgumentException appends "(Parameter 'name')" to anything that carries one.
+        throw new ArgumentException(
+            $"'{name}' is not a brand this build knows. Available: {string.Join(", ", Brands.Keys)}. " +
+            "Add yours to DesignSystem.Brands.");
+    }
 
     /// <summary>Near-black used for full-bleed covers and section dividers.</summary>
     public string Ink { get; init; } = "12161C";
@@ -73,6 +110,14 @@ public sealed record DesignSystem
     /// set in it gets the deeper burnt tone instead of the one used for the rules.
     /// </summary>
     public string AccentText { get; init; } = "A34E1F";
+
+    /// <summary>
+    /// The accent on a dark ground. The same problem as the muted pair, one step further:
+    /// an accent chosen to read on paper is too dark to read on ink, and darker still
+    /// against the corner where the cover gradient lifts toward white. The eyebrow on a
+    /// cover or a section slide is set in this.
+    /// </summary>
+    public string AccentReverse { get; init; } = "E8834A";
 
     /// <summary>Page and slide background.</summary>
     public string Paper { get; init; } = "FFFFFF";
@@ -109,14 +154,21 @@ public sealed record DesignSystem
     /// document unbranded.
     /// </summary>
     /// <remarks>
-    /// Drawn as a coloured disc followed by the name, which is how dotaction.io builds its
-    /// own: the mark is the dot in the word. A run of text rather than an image, so it stays
-    /// crisp at any zoom and needs no asset in the package.
+    /// Drawn as a coloured disc followed by the name. A run of text rather than an image,
+    /// so it stays crisp at any zoom and needs no asset in the package - and so this repo
+    /// carries no logo it would have to have permission to ship.
     /// </remarks>
     public string? Wordmark { get; init; }
 
     /// <summary>The disc that opens the wordmark.</summary>
     public string WordmarkDot { get; init; } = "●";
+
+    /// <summary>
+    /// Whether eyebrows are set in capitals. Case is a brand decision, not a typographic
+    /// default: a wordmark that is deliberately lowercase should not have its eyebrows
+    /// shouting, and forcing capitals mangles names with meaningful internal casing.
+    /// </summary>
+    public bool EyebrowUppercase { get; init; } = true;
 
     /// <summary>Display face, for titles. A serif against a sans body reads as considered.</summary>
     public string DisplayFont { get; init; } = "Georgia";
@@ -229,6 +281,17 @@ public sealed record DesignSystem
     /// raw wash colour would fail a page that never prints that dark.
     /// </summary>
     public string RenderedWash => Blend(WashDeep, Paper, PageBackdropOpacity);
+
+    /// <summary>
+    /// The lightest tone the cover backdrop reaches. <c>Backdrop.Gradient</c> lifts one
+    /// corner toward white so a large dark area does not look dead, and that corner is where
+    /// the eyebrow sits - so text on the cover has to be measured against the lift, not
+    /// against flat <see cref="Ink"/>.
+    /// </summary>
+    public string CoverLightest => Blend("FFFFFF", Ink, CoverLift);
+
+    /// <summary>How far the cover gradient lifts toward white at its lightest corner.</summary>
+    public double CoverLift { get; init; } = 0.10;
 
     /// <summary>Composites a colour over a background at the given alpha.</summary>
     public static string Blend(string foreground, string background, double alpha)

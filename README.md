@@ -1,103 +1,282 @@
 # OfficeAgent.Studio
 
-A demo agent that writes .pptx decks and .docx documents which look like a design studio made
-them - built on [OfficeAgent.NET](https://github.com/ilia-sokolov/OfficeAgent.NET) and the
-[Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
+**A one-line brief in. A PowerPoint deck or a Word report out — one palette, one type
+scale, every element on the same margin.**
+
+![Two slides from a generated deck: a dark cover with an accent rule, and a statistic slide with the number on a wash card](docs/images/deck.png)
 
 ```bash
-dotnet run --project src/OfficeAgent.Studio -- both
+git clone https://github.com/ilia-sokolov/OfficeAgent.Studio
+cd OfficeAgent.Studio
+dotnet run --project src/OfficeAgent.Studio -- deck "Series B narrative for a warehouse robotics company"
 ```
 
-Output lands in `./output`. Two files, roughly a minute.
+About a minute later `./output` has a `.pptx`: eight to ten slides, generated from that
+one sentence. Needs .NET 8 and a signed-in [Claude Code](https://claude.com/claude-code)
+CLI — or any other `IChatClient`.
 
-## The idea
+A sample, in C#, on [OfficeAgent.NET](https://github.com/ilia-sokolov/OfficeAgent.NET) and
+the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
 
-Most "AI made me a deck" output looks the same, and it looks bad for the same reason: the model
-is asked to choose the words *and* the formatting, so it picks a font size per slide and nothing
-lines up with anything.
+## What you can make
 
-This splits the job in two.
+| Command | Output | Shape |
+| --- | --- | --- |
+| `both` | deck + report | The default. Same brief, planned independently — the figures will not agree |
+| `deck` | `.pptx` | 8–10 slides from seven slide roles |
+| `doc` | `.docx` | 12–18 blocks: cover page, headings, bullets, a pull quote, a table |
+| `invoice` | `.docx` | Line items, computed totals, payment terms |
+| `manual` | `.docx` | Numbered sections and steps that renumber when edited |
+| `backdrop` | `.pptx` + `.docx` | Background-opacity samples. **Makes no model call** |
 
-**The model decides what the document says.** It returns content as JSON - a slide's role, its
-title, its bullets, its number - and it is told explicitly that anything it says about fonts,
-colours, sizes or positions is ignored.
+![Two pages of a generated Word report: a dark cover page, and a body page with a ruled table, a running head and a page number](docs/images/report.png)
 
-**`DesignSystem` decides how it looks.** One ink, one accent, one wash. Two faces: Georgia to
-display, Calibri to read. A type scale of six sizes and a margin, and every measure on the page
-derived from those. Nothing picks a colour at the point of use, which is what stops the ninth
-slide drifting from the first.
+**Start with `backdrop`.** It needs no model, no network and no sign-in, so if it produces
+files your build is good and anything that fails afterwards is the model, not the setup.
 
-That division is the whole demo. It is also the reason the output holds together: a fixed
-vocabulary of seven slide roles and six block kinds is a smaller thing to get right than an
-open-ended "make it beautiful", and a model is good at choosing among seven roles.
+```bash
+dotnet run --project src/OfficeAgent.Studio -- backdrop
+```
 
-## What it produces
+`--help` lists everything.
 
-A deck of 8–10 slides, composed from these roles:
+## Why it exists
 
-| Role | What it is |
-| --- | --- |
-| `cover` | Full-bleed ink, accent rule, the deck's title |
-| `section` | A divider that announces what follows |
-| `statement` | One sentence that has to land |
-| `bullets` | Three or four lines, centred in the content area |
-| `stat` | One number on a wash card, set large |
-| `table` | Numbers, no rules, alignment doing the separating |
-| `closing` | The ask |
+Ask a model for a deck and you usually get slides that are individually plausible and
+collectively a mess. Font sizes drift. A new colour turns up on slide six. Nothing lines up.
 
-And a document of 12–18 blocks: a title page of its own, then headings, paragraphs, hanging
-bullets, one pull quote with an accent rule down its left edge, and one table ruled only
-under its header row. A running head carries the title, the footer carries the client and a
-page number at opposite edges, and a wash sits behind every page at 35% - all of it kept off
-the cover, which has its own blank header.
+That happens because the model was asked to decide two different things at once: what the
+document says, and what it looks like. It is good at the first and unreliable at the second,
+because looking consistent means making a hundred small decisions identically, ten times
+over.
 
-Every slide shares one vertical rhythm - eyebrow, accent rule, title, content - derived from a
-single anchor per slide kind, so the eyebrow and the rule cannot collide however long a title
-turns out to be.
+So this splits them. The model returns content as JSON — a slide's role, its title, its one
+number — and is told that anything it says about fonts, colours, sizes or positions is
+discarded. A composer turns that JSON into OfficeAgent.NET operations, applying
+`DesignSystem` as it goes.
 
-## Layout
+Run the same brief twice and you get different words in the same layout.
+
+## Setup
+
+**.NET 8 SDK.** Both projects target `net8.0`. A machine with only a newer SDK can build
+this but not run it, and will need the .NET 8 runtime as well.
+
+**A model.** By default the sample shells out to the Claude Code CLI, so if `claude` is
+installed and signed in there is nothing to configure. Claude Code needs a paid Claude plan.
+A run makes one model call per file, and up to three if the model returns unusable JSON. To
+use something else, replace one line in `Program.cs`:
+
+```csharp
+// Program.cs — the only line that names a model
+var agent = new StudioAgent(new ClaudeCodeChatClient());
+
+// for example
+var agent = new StudioAgent(
+    new AzureOpenAIClient(endpoint, credential).GetChatClient("gpt-4o").AsIChatClient());
+```
+
+Two files name Claude: `ClaudeCodeChatClient.cs`, and the one line in `Program.cs` above.
+Nothing else in the project knows which model it is talking to.
+
+**OfficeAgent.NET 0.6.0**, restored from NuGet. If you have the OfficeAgent.NET repository
+cloned beside this one, the build uses that instead and says so on its first build line.
+
+You do not need Microsoft Office to generate files — only to open them.
+
+### Environment
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `OFFICEAGENT_STUDIO_OUTPUT` | `./output` | Where files are written |
+| `OFFICEAGENT_STUDIO_CLIENT` | `Northwind Traders` | The name on the cover and in the footer |
+| `OFFICEAGENT_STUDIO_BRAND` | `default` | Which palette: `default` or `meridian`. An unknown name stops the run |
+
+```bash
+OFFICEAGENT_STUDIO_CLIENT="Acme GmbH" dotnet run --project src/OfficeAgent.Studio -- doc
+```
+
+```powershell
+$env:OFFICEAGENT_STUDIO_CLIENT = "Acme GmbH"
+dotnet run --project src/OfficeAgent.Studio -- doc
+```
+
+## Limits
+
+Worth knowing before you use this for anything real. Each design limit is tagged with whose
+it is: **[sample]** you can fix by editing this repository, **[library]** needs a feature
+OfficeAgent.NET does not have yet.
+
+**Content**
+
+- **Everything in the output is invented.** The model is told to write specific, plausible
+  figures. It has no data source. Treat every number as fiction.
+- **Content still needs review.** A generated invoice once charged VAT *and* stated the VAT
+  was reverse-charged — a domain error no layout check catches. Arithmetic is done in C#;
+  tax treatment and factual claims are not.
+- **The model does not always follow its own rules.** Occasionally a slide arrives with five
+  bullets against an instruction saying four.
+- **`both` plans the deck and the report independently.** They share a design system, not a
+  set of facts. Do not expect the numbers to agree.
+
+**Design and output**
+
+- **No logo image. [sample]** `Wordmark` draws a coloured disc and the brand name, and only
+  on the invoice — the deck and report covers carry no mark at all. OfficeAgent.NET does
+  support `insertImage` in both formats, and this sample already embeds PNGs as backgrounds,
+  so a logo is unwritten wiring rather than a missing capability.
+- **The cover is always dark. [sample]** `cover` is full-bleed ink and `section` and
+  `closing` invert to it. A brand whose covers are white is not expressible without editing
+  `DeckComposer`.
+- **The Office theme is not set. [library]** Files carry your colours as direct formatting
+  over the stock Office theme, so the PowerPoint colour picker still offers Office blue, and
+  *Reset Slide* reverts a slide to Calibri. Anyone editing the file by hand drifts
+  off-brand. There is no theme operation to call.
+- **Page size and margins are not set. [library]** A Word file is Letter or A4 depending on
+  the reader's locale, the cover backdrop stretches to fit, and the measure is calibrated
+  against Letter. Nothing constructs a page size.
+- **No heading styles. [sample]** Headings are direct-formatted paragraphs, so there is no
+  navigation pane, no PDF bookmarks, and a screen reader announces a heading as ordinary
+  text. `format` takes a `styleId` and the Word module ships `Heading1`–`Heading3`; the
+  composers just do not use them. Colour contrast is checked; the rest of WCAG is not.
+- **Fonts are referenced, not embedded. [library]** A brand face the reader does not have is
+  silently substituted, and because positions are absolute, substitution can overflow a box.
+  Pick faces your readers have.
+- **No charts. [library]** And no images in the content — the backdrops are generated PNGs,
+  but nothing places a picture in the flow **[sample]**. No table of contents or
+  cross-references **[library]**: there is no verb for inserting a field.
+- **Long text can still overflow. [sample]** The design system constrains layout; it does
+  not reflow.
+
+Spacing, the vertical grid, the rule length and the slide proportions are literals in the
+composers rather than brandable values. [docs/design-system.md](docs/design-system.md) lists
+what is and is not brandable in full.
+
+## How it works
+
+```
+Brief ──▶ StudioAgent ──▶ JSON plan ──▶ Composer ──▶ OfficeAgent.NET ──▶ .pptx / .docx
+          (the model)                   (+ DesignSystem)
+```
 
 ```
 src/OfficeAgent.Studio/
-  Program.cs               DI wiring and the CLI
-  Brief.cs                 The request, and the JSON shapes the model returns
-  StudioAgent.cs           The two agents, and their instructions
+  Program.cs               CLI and dependency injection
+  StudioAgent.cs           Four agents and their instructions
+  Brief.cs, Templates.cs   The JSON shapes the model returns
   ClaudeCodeChatClient.cs  IChatClient over the Claude Code CLI
   DesignSystem.cs          Every colour, face, size and measure
-  Backdrop.cs              Draws the cover gradients, as PNGs, in code
-  DeckComposer.cs          DeckPlan  → .pptx
-  DocumentComposer.cs      DocumentPlanned → .docx
+  Backdrop.cs              Draws backgrounds as PNGs, in code
+  DeckComposer.cs          deck plan     → .pptx
+  DocumentComposer.cs      document plan → .docx
+  InvoiceComposer.cs       invoice plan  → .docx
+  ManualComposer.cs        manual plan   → .docx
+  BackdropSample.cs        the opacity demonstration
 ```
 
-`Backdrop.cs` is there so the repository carries no binary assets: a demo that shipped a
-stock photograph would be demonstrating the photograph. It writes a PNG by hand - header,
-one deflated IDAT, CRCs - and the gradient it draws comes from `DesignSystem`, so changing
-the accent changes the cover too.
+A deck is built from seven roles, and the role decides the whole appearance of the slide:
 
-`DesignSystem.cs` is the file to edit first. Change `Accent`, `DisplayFont` and `Margin` and the
-whole deck follows.
+| Role | What it is for |
+| --- | --- |
+| `cover` | Full-bleed ink, accent rule, the deck's title |
+| `section` | A divider announcing what follows |
+| `statement` | One sentence that has to land |
+| `bullets` | Three or four lines |
+| `stat` | One number carrying the slide |
+| `table` | Numbers, no rules, alignment doing the separating |
+| `closing` | The ask |
 
-## Using a different model
+Adding a role means editing the instructions in `StudioAgent.cs`, the shape in `Brief.cs`,
+and three places in `DeckComposer.cs` — `LayoutFor`, `IsCentred` and the styling switch. If
+the role introduces a new text-on-ground combination, add it to `ContrastTests.Pairings()`
+too; that list does not maintain itself.
 
-`ClaudeCodeChatClient` is the only Claude-specific file. It shells out to the `claude` CLI, so
-the demo runs on a Claude subscription with no API key configured. Swap it for any
-`IChatClient` and nothing else changes:
+A whole new document type is more: a plan record in `Templates.cs`, a fifth agent in
+`StudioAgent.cs`, a composer of two to four hundred lines, and a branch in `Program.cs`. The
+four composers share no base class, so `FillFirstAsync`, `AppendAsync` and `ApplyAsync` are
+duplicated in each — worth extracting before you write a fifth.
+
+## Branding
+
+A second brand ships as a worked example. `meridian` is deliberately unlike the default in
+every dimension the system controls — cooler ink, a blue accent instead of orange, sans
+display type instead of serif — so you can see what changes and what does not:
+
+```bash
+OFFICEAGENT_STUDIO_BRAND=meridian dotnet run --project src/OfficeAgent.Studio -- backdrop
+```
+
+A brand is a value of the `DesignSystem` record:
 
 ```csharp
-var agent = new StudioAgent(
-    new AzureOpenAIClient(endpoint, credential)
-        .GetChatClient("gpt-4o")
-        .AsIChatClient());
+public static readonly DesignSystem Acme = Default with
+{
+    Ink         = "1A1A1A",
+    Paper       = "FFFFFF",
+    Accent      = "0057B8",   // rules, fills, the wordmark dot
+    AccentText  = "004489",   // the accent where it has to be read on paper
+    AccentReverse = "5FA8FF", // the accent where it has to be read on ink
+    DisplayFont = "Georgia",
+    TextFont    = "Arial",
+    Wordmark    = "acme"
+};
 ```
 
-## Requirements
+Register it in `DesignSystem.Brands`, then:
 
-- .NET 8 SDK
-- OfficeAgent.NET 0.6.0 or later - this uses slide backgrounds, shape fills, vertical text
-  anchoring, `backgroundImage`, Word headers and footers, page breaks, hanging indents and
-  single-edge borders
-- For the default model: the [Claude Code](https://claude.com/claude-code) CLI, signed in
+```bash
+OFFICEAGENT_STUDIO_BRAND=acme dotnet run --project src/OfficeAgent.Studio -- invoice
+```
 
-The project references the OfficeAgent working tree when it finds one beside this repo, and
-falls back to the NuGet packages otherwise. See the comments in
-`src/OfficeAgent.Studio/OfficeAgent.Studio.csproj`.
+Registering does two things: the CLI can select it, and the contrast tests measure it. Run
+`dotnet test` after adding one — the suite generates its cases from the registry, so a
+palette that fails the pairings it checks fails the build rather than reaching a reader.
+
+Two rules the tests enforce, worth knowing before you pick colours:
+
+- **`AccentText` must reach 4.5:1 on `Paper`**, and must not be lighter than `Accent`. If
+  your brand accent already clears 4.5:1, set both to the same value — the pair exists so a
+  bright mark *can* have a darker twin for text, not so that it must.
+- **`MutedReverse` must be lighter than `Muted`.** One is for text on paper, the other for
+  text on the ink cover; setting them to the same value loses the cover subtitle.
+
+Then preview it without spending a model call:
+
+```bash
+OFFICEAGENT_STUDIO_BRAND=acme dotnet run --project src/OfficeAgent.Studio -- backdrop
+```
+
+`backdrop` renders your ink and accent offline, so you can see the palette on a real slide
+before committing anyone's time to it.
+
+`DesignSystem` holds colour, type and a few measures. Spacing, the vertical grid and slide
+geometry are still literals in the composers — see
+[docs/design-system.md](docs/design-system.md) for what is and is not brandable, and for why
+the palette carries two greys and three accents.
+
+## Tests
+
+```bash
+dotnet test
+```
+
+46 tests, and it is worth knowing what they do and do not cover.
+
+- **Contrast**, for every registered brand: the text-and-ground pairings listed in
+  `ContrastTests.Pairings()`. That list is maintained by hand — adding a colour to a
+  composer does not add a case.
+- **Invoice arithmetic**: that the printed lines add up to the printed subtotal, that a
+  negative tax rate is ignored rather than silently subtracted, and that halves round the
+  way a reader expects.
+
+**Nothing here opens a generated file.** No test checks that the `.pptx` and `.docx` this
+sample produces are schema-valid, or that anything landed where it was meant to.
+OfficeAgent.NET validates against the Open XML schema in *its own* test suite, which is a
+different thing from validating your output at run time. If you build on this, output tests
+are the first thing to add.
+
+## Contributing and licence
+
+Issues and pull requests welcome, particularly new brands and new slide roles.
+
+MIT — see [LICENSE](LICENSE).

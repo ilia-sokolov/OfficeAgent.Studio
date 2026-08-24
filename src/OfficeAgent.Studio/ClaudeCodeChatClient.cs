@@ -106,9 +106,19 @@ public sealed class ClaudeCodeChatClient : IChatClient
         // Somewhere with no project context to inherit.
         info.WorkingDirectory = Path.GetTempPath();
 
-        using var process = Process.Start(info)
-            ?? throw new InvalidOperationException($"Could not start '{_executable}'.");
+        Process process;
+        try
+        {
+            process = Process.Start(info)
+                ?? throw new ModelUnavailableException($"Could not start '{_executable}'.");
+        }
+        catch (System.ComponentModel.Win32Exception error)
+        {
+            throw new ModelUnavailableException(
+                $"'{_executable}' could not be run: {error.Message}", error);
+        }
 
+        using var _ = process;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout);
 
@@ -124,14 +134,46 @@ public sealed class ClaudeCodeChatClient : IChatClient
 
         var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
         var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-        await process.WaitForExitAsync(timeout.Token);
+
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Disposing the Process does not stop the child. Left alone it keeps running,
+            // holding a model call open, for every attempt.
+            TryKill(process);
+            throw new ModelUnavailableException(
+                $"'{_executable}' did not answer within {_timeout.TotalMinutes:0.#} minutes.");
+        }
 
         var text = await stdout;
         if (process.ExitCode != 0)
-            throw new InvalidOperationException(
-                $"claude exited {process.ExitCode}: {await stderr}");
+        {
+            var message = (await stderr).Trim();
+
+            // A CLI that is present but not usable - not signed in, out of quota, wrong
+            // version - exits non-zero without producing a reply. That is a setup problem
+            // and is worth naming as one rather than retrying it three times.
+            throw new ModelUnavailableException(
+                $"'{_executable}' exited {process.ExitCode}" +
+                (message.Length > 0 ? $": {message}" : " without a message."));
+        }
 
         return text.Trim();
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        catch (Exception)
+        {
+            // Already gone, or not ours to kill. Either way there is nothing useful to do.
+        }
     }
 
     public object? GetService(Type serviceType, object? serviceKey = null) =>

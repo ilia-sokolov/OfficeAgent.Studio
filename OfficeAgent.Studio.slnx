@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OfficeAgent.Studio/OfficeAgent.Studio.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OfficeAgent.Studio.Tests/OfficeAgent.Studio.Tests.csproj" />
+  </Folder>
+</Solution>

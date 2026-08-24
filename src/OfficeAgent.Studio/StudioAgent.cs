@@ -198,11 +198,25 @@ public sealed class StudioAgent
                 var response = await agent.RunAsync(prompt, cancellationToken: ct);
                 var json = ExtractJson(response.Text);
 
-                return JsonSerializer.Deserialize<T>(json, Json)
+                var plan = JsonSerializer.Deserialize<T>(json, Json)
                     ?? throw new InvalidOperationException($"The model returned no usable {typeof(T).Name}.");
+
+                // `required` gets a property past the deserialiser; it does not stop the
+                // model sending an empty array. Checking here means a thin plan costs
+                // another attempt rather than an IndexOutOfRangeException three frames
+                // down inside a composer.
+                if (Deficiency(plan) is { } deficiency)
+                    throw new InvalidOperationException(deficiency);
+
+                return plan;
             }
             catch (Exception error) when (error is JsonException or InvalidOperationException)
             {
+                // A model that cannot be reached at all is a setup problem, and retrying it
+                // three times then blaming the reply is the least helpful thing this could
+                // do. It is reported immediately and in those terms.
+                if (error is ModelUnavailableException unreachable) throw Explain(unreachable);
+
                 // A malformed reply is worth another turn; a cancelled one is not, which is
                 // why OperationCanceledException is deliberately not caught here.
                 last = error;
@@ -211,9 +225,51 @@ public sealed class StudioAgent
             }
         }
 
-        throw new InvalidOperationException(
-            $"The model did not return a usable {typeof(T).Name} in {Attempts} attempts.", last);
+        throw new StudioException(
+            $"The model did not return a usable {typeof(T).Name} in {Attempts} attempts.",
+            "The last reply is quoted above. This is the model's output, not your setup - " +
+            "the same brief usually succeeds on a retry.",
+            last);
     }
+
+    /// <summary>
+    /// What is missing from an otherwise well-formed plan, or null when it is usable.
+    /// </summary>
+    /// <remarks>
+    /// Only the emptiness a composer would crash on, and the unknown role names it would
+    /// silently mis-style. Everything else the model gets wrong - five bullets where the
+    /// instructions asked for four - is absorbed by the layout on purpose.
+    /// </remarks>
+    private static string? Deficiency<T>(T plan) => plan switch
+    {
+        DeckPlan deck when deck.Slides is null or { Length: 0 } =>
+            "The deck plan has no slides.",
+        DeckPlan deck when Unknown(deck.Slides.Select(s => s.Kind), SlideKinds) is { } kind =>
+            $"The deck plan uses an unknown slide role '{kind}'. Expected one of: {string.Join(", ", SlideKinds)}.",
+
+        DocumentPlanned document when document.Blocks is null or { Length: 0 } =>
+            "The document plan has no blocks.",
+
+        ManualPlanned manual when manual.Sections is null or { Length: 0 } =>
+            "The manual plan has no sections.",
+
+        InvoicePlanned invoice when invoice.Lines is null or { Length: 0 } =>
+            "The invoice plan has no line items.",
+
+        _ => null
+    };
+
+    private static readonly string[] SlideKinds =
+        { "cover", "section", "statement", "bullets", "stat", "table", "closing" };
+
+    private static string? Unknown(IEnumerable<string> used, string[] known) =>
+        used.FirstOrDefault(k => !known.Contains(k, StringComparer.OrdinalIgnoreCase));
+
+    private static StudioException Explain(ModelUnavailableException error) => new(
+        error.Message,
+        "This is a setup problem rather than the model's answer. Check that the CLI is " +
+        "installed and signed in, or point the sample at a different IChatClient in Program.cs.",
+        error);
 
     /// <summary>
     /// Pulls the JSON object out of the reply. Models wrap JSON in a fence or a sentence
