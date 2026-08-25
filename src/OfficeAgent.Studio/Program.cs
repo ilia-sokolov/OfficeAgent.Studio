@@ -56,7 +56,10 @@ internal static class StudioProgram
 
             var client = services.GetRequiredService<OfficeAgentClient>();
             var design = DesignSystem.ByName(Environment.GetEnvironmentVariable("OFFICEAGENT_STUDIO_BRAND"));
-            var agent = new StudioAgent(new ClaudeCodeChatClient());
+            using var modelClient = kind is "backdrop" or "background"
+                ? null
+                : ModelClientFactory.CreateFromEnvironment();
+            var agent = modelClient is null ? null : new StudioAgent(modelClient);
             var publisher = new OutputTransaction(client, output);
 
             var configuredClient = Environment.GetEnvironmentVariable("OFFICEAGENT_STUDIO_CLIENT");
@@ -73,7 +76,7 @@ internal static class StudioProgram
             if (kind is "deck" or "both")
             {
                 Console.WriteLine("Planning the deck…");
-                var plan = await agent.PlanDeckAsync(brief, ct);
+                var plan = await agent!.PlanDeckAsync(brief, ct);
                 Console.WriteLine($"  {plan.Slides.Length} slides: {string.Join(", ", plan.Slides.Select(slide => slide.Kind))}");
 
                 Console.WriteLine("Composing…");
@@ -88,7 +91,7 @@ internal static class StudioProgram
             if (kind is "doc" or "document" or "both")
             {
                 Console.WriteLine("Planning the document…");
-                var plan = await agent.PlanDocumentAsync(brief, ct);
+                var plan = await agent!.PlanDocumentAsync(brief, ct);
                 Console.WriteLine(
                     $"  {plan.Blocks.Length} blocks: {string.Join(", ", plan.Blocks.Select(block => block.Kind).Distinct())}");
 
@@ -105,7 +108,7 @@ internal static class StudioProgram
             if (kind == "invoice")
             {
                 Console.WriteLine("Planning the invoice…");
-                var plan = await agent.PlanInvoiceAsync(brief, ct);
+                var plan = await agent!.PlanInvoiceAsync(brief, ct);
                 Console.WriteLine($"  {plan.Lines.Length} line items, {plan.Terms.Length} terms");
 
                 Console.WriteLine("Composing…");
@@ -120,7 +123,7 @@ internal static class StudioProgram
             if (kind == "manual")
             {
                 Console.WriteLine("Planning the manual…");
-                var plan = await agent.PlanManualAsync(brief, ct);
+                var plan = await agent!.PlanManualAsync(brief, ct);
                 Console.WriteLine(
                     $"  {plan.Sections.Length} sections, " +
                     $"{plan.Sections.Sum(section => section.Procedures.Length)} procedures, " +
@@ -223,6 +226,13 @@ internal static class StudioProgram
           OFFICEAGENT_STUDIO_OUTPUT   where files are written (default ./output)
           OFFICEAGENT_STUDIO_BRAND    palette: default, meridian
           OFFICEAGENT_STUDIO_CLIENT   name on the cover and in the footer
+          OFFICEAGENT_STUDIO_MODEL_PROVIDER
+                                      claude (default) or azure-foundry
+
+        Azure Foundry
+          AZURE_OPENAI_ENDPOINT       Foundry/Azure OpenAI endpoint
+          AZURE_OPENAI_DEPLOYMENT     deployed model name (AZURE_OPENAI_MODEL also works)
+          AZURE_OPENAI_API_KEY        optional; otherwise DefaultAzureCredential is used
 
         Examples
           dotnet run --project src/OfficeAgent.Studio -- deck "Series B narrative for a robotics company"

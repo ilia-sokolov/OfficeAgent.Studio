@@ -12,8 +12,8 @@ dotnet run --project src/OfficeAgent.Studio -- deck "Series B narrative for a wa
 ```
 
 About a minute later `./output` has a `.pptx`: eight to ten slides, generated from that
-one sentence. Needs .NET 8 and a signed-in [Claude Code](https://claude.com/claude-code)
-CLI — or any other `IChatClient`.
+one sentence. Needs .NET 8 and either a signed-in [Claude Code](https://claude.com/claude-code)
+CLI or a model deployment in Microsoft Foundry.
 
 A sample, in C#, on [OfficeAgent.NET](https://github.com/ilia-sokolov/OfficeAgent.NET) and
 the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
@@ -64,46 +64,37 @@ Run the same brief twice and you get different words in the same layout.
 **.NET 8 SDK.** Both projects target `net8.0`. A machine with only a newer SDK can build
 this but not run it, and will need the .NET 8 runtime as well.
 
-**A model.** By default the sample shells out to the Claude Code CLI, so if `claude` is
-installed and signed in there is nothing to configure. Claude Code needs a paid Claude plan.
-A run makes one model call per file, and up to three if the model returns unusable JSON or a
-plan that violates the documented shape. `StudioAgent` accepts any `IChatClient`; the sample
-wires Claude in `Program.cs`.
+**A model.** The model client is selected at runtime. By default the sample shells out to the
+Claude Code CLI, so if `claude` is installed and signed in there is nothing to configure.
+Claude Code needs a paid Claude plan. A run makes one model call per file, and up to three if
+the model returns unusable JSON or a plan that violates the documented shape.
 
-```csharp
-var agent = new StudioAgent(new ClaudeCodeChatClient());
+To use a Microsoft Foundry deployment instead, set the provider, endpoint and deployment.
+With no API key the client uses `DefaultAzureCredential`, which can obtain your Azure CLI,
+Visual Studio, service-principal or managed-identity credential:
+
+```powershell
+$env:OFFICEAGENT_STUDIO_MODEL_PROVIDER = "azure-foundry"
+$env:AZURE_OPENAI_ENDPOINT = "https://your-resource.openai.azure.com/"
+$env:AZURE_OPENAI_DEPLOYMENT = "your-chat-deployment"
+az login
+dotnet run --project src/OfficeAgent.Studio -- deck "Series B narrative"
 ```
 
-For example, Azure OpenAI needs three optional packages that are deliberately not part of
-the default Claude-based restore:
+For key-based authentication, also set:
 
-```bash
-dotnet add src/OfficeAgent.Studio package Azure.AI.OpenAI
-dotnet add src/OfficeAgent.Studio package Azure.Identity
-dotnet add src/OfficeAgent.Studio package Microsoft.Extensions.AI.OpenAI --prerelease
+```powershell
+$env:AZURE_OPENAI_API_KEY = "your-key"
 ```
 
-Then add `using Azure.AI.OpenAI;`, `using Azure.Identity;` and
-`using Microsoft.Extensions.AI;` to `Program.cs`, and replace the agent construction with:
+`AZURE_OPENAI_MODEL` is accepted as an alias for `AZURE_OPENAI_DEPLOYMENT`. The endpoint must
+be the endpoint shown for the deployed model, and the deployment value is its deployment
+name rather than a general catalogue model name. The selected identity needs permission to
+invoke it. See Microsoft's [.NET chat quickstart](https://learn.microsoft.com/dotnet/ai/quickstarts/build-chat-app)
+and [Foundry authentication guidance](https://learn.microsoft.com/dotnet/ai/azure-ai-services-authentication).
 
-```csharp
-var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT")
-    ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT is required.");
-var deployment = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT")
-    ?? throw new InvalidOperationException("AZURE_OPENAI_DEPLOYMENT is required.");
-
-var agent = new StudioAgent(
-    new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
-        .GetChatClient(deployment)
-        .AsIChatClient());
-```
-
-`DefaultAzureCredential` uses your signed-in Azure CLI/Visual Studio identity or managed
-identity. That identity needs access to the deployment. See Microsoft's
-[.NET model quickstart](https://learn.microsoft.com/dotnet/ai/quickstarts/prompt-model).
-
-Two files name Claude: `ClaudeCodeChatClient.cs`, and the construction in `Program.cs`.
-Nothing else in the project knows which model it is talking to.
+`StudioAgent` still depends only on `IChatClient`. `ModelClientFactory` is the configuration
+boundary, so another provider can be added there without changing planning or composition.
 
 **OfficeAgent.NET 0.6.0**, restored from NuGet. NuGet remains the default even when an
 OfficeAgent.NET checkout happens to be nearby, so builds do not change with directory layout.
@@ -126,6 +117,12 @@ You do not need Microsoft Office to generate files — only to open them.
 | `OFFICEAGENT_STUDIO_OUTPUT` | `./output` | Where files are written |
 | `OFFICEAGENT_STUDIO_CLIENT` | `Northwind Traders` | The name on the cover and in the footer |
 | `OFFICEAGENT_STUDIO_BRAND` | `default` | Which palette: `default` or `meridian`. An unknown name stops the run |
+| `OFFICEAGENT_STUDIO_MODEL_PROVIDER` | `claude` | Model client: `claude` or `azure-foundry` |
+| `OFFICEAGENT_STUDIO_CLAUDE_EXECUTABLE` | `claude` | Claude Code executable or absolute path |
+| `OFFICEAGENT_STUDIO_CLAUDE_TIMEOUT_SECONDS` | `300` | Positive Claude CLI timeout in seconds |
+| `AZURE_OPENAI_ENDPOINT` | — | Required Foundry/Azure OpenAI endpoint |
+| `AZURE_OPENAI_DEPLOYMENT` | — | Required deployed chat-model name; `AZURE_OPENAI_MODEL` is an alias |
+| `AZURE_OPENAI_API_KEY` | Entra ID | Optional key; otherwise `DefaultAzureCredential` is used |
 
 ```bash
 OFFICEAGENT_STUDIO_CLIENT="Acme GmbH" dotnet run --project src/OfficeAgent.Studio -- doc
@@ -198,6 +195,7 @@ Brief ──▶ StudioAgent ──▶ JSON plan ──▶ Composer ──▶ Off
 ```
 src/OfficeAgent.Studio/
   Program.cs               CLI and dependency injection
+  ModelClientFactory.cs    Claude / Azure Foundry configuration
   StudioAgent.cs           Four agents and their instructions
   PlanValidator.cs         model plan normalization and validation
   Brief.cs, Templates.cs   The JSON shapes the model returns
@@ -304,7 +302,7 @@ the palette carries two greys and three accents.
 dotnet test
 ```
 
-61 tests, and it is worth knowing what they cover.
+73 tests, and it is worth knowing what they cover.
 
 - **Contrast**, for every registered brand: the text-and-ground pairings listed in
   `ContrastTests.Pairings()`. That list is maintained by hand — adding a colour to a
@@ -315,6 +313,8 @@ dotnet test
 - **Model-plan validation**: canonical roles, null nested collections, table shape, invoice
   semantics, manual numbering input and JSON extraction.
 - **Process cancellation**: cancelling a model request terminates the CLI process tree.
+- **Model-client configuration**: Claude defaults, Foundry aliases, endpoint/deployment
+  validation, Entra/key construction and provider-neutral failure reporting.
 - **Generated output**: fixed plans compose every `.pptx` and `.docx` type, publish without
   temporary files, open through the Open XML SDK, pass the Office 2019 schema validator and
   retain key semantic content.

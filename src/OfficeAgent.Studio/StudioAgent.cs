@@ -233,8 +233,8 @@ public sealed class StudioAgent
 
     private static StudioException Explain(ModelUnavailableException error) => new(
         error.Message,
-        "This is a setup problem rather than the model's answer. Check that the CLI is " +
-        "installed and signed in, or point the sample at a different IChatClient in Program.cs.",
+        "This is a model-client setup problem rather than the model's answer. Check the " +
+        "selected provider, endpoint, deployment, credentials, and network access.",
         error);
 
     /// <summary>
