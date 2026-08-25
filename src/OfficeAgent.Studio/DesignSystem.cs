@@ -1,5 +1,12 @@
 namespace OfficeAgent.Studio;
 
+/// <summary>The tonal treatment used only by the first cover surface.</summary>
+public enum CoverMode
+{
+    Dark,
+    Light
+}
+
 /// <summary>
 /// The rules a document obeys, stated once.
 /// </summary>
@@ -170,6 +177,18 @@ public sealed record DesignSystem
     /// </summary>
     public bool EyebrowUppercase { get; init; } = true;
 
+    /// <summary>
+    /// Whether the cover uses the dark ink ramp or the light paper ramp. Section and
+    /// closing slides deliberately remain reverse surfaces in either mode.
+    /// </summary>
+    public CoverMode CoverMode { get; init; } = CoverMode.Dark;
+
+    /// <summary>
+    /// Optional runtime logo. The binary asset is intentionally not stored in a generated
+    /// design-system JSON file; it is supplied per run so that artifact stays portable.
+    /// </summary>
+    public LogoAsset? Logo { get; init; }
+
     /// <summary>Display face, for titles. A serif against a sans body reads as considered.</summary>
     public string DisplayFont { get; init; } = "Georgia";
 
@@ -283,12 +302,26 @@ public sealed record DesignSystem
     public string RenderedWash => Blend(WashDeep, Paper, PageBackdropOpacity);
 
     /// <summary>
-    /// The lightest tone the cover backdrop reaches. <c>Backdrop.Gradient</c> lifts one
-    /// corner toward white so a large dark area does not look dead, and that corner is where
-    /// the eyebrow sits - so text on the cover has to be measured against the lift, not
-    /// against flat <see cref="Ink"/>.
+    /// The lightest tone the selected cover backdrop reaches. <c>Backdrop.Gradient</c>
+    /// lifts one corner toward white, so text is measured against that rendered tone rather
+    /// than only against the unmodified dark or light start colour.
     /// </summary>
-    public string CoverLightest => Blend("FFFFFF", Ink, CoverLift);
+    public string CoverLightest => Blend("FFFFFF", CoverBackgroundStart, CoverLift);
+
+    /// <summary>The first cover gradient stop for the selected tonal mode.</summary>
+    public string CoverBackgroundStart => CoverMode == CoverMode.Dark ? Ink : Paper;
+
+    /// <summary>The second cover gradient stop for the selected tonal mode.</summary>
+    public string CoverBackgroundEnd => CoverMode == CoverMode.Dark ? InkDeep : WashDeep;
+
+    /// <summary>Primary cover text selected as a contrast-safe palette role.</summary>
+    public string CoverTitleColor => CoverMode == CoverMode.Dark ? Reverse : Ink;
+
+    /// <summary>Secondary cover text selected as a contrast-safe palette role.</summary>
+    public string CoverMutedColor => CoverMode == CoverMode.Dark ? MutedReverse : Body;
+
+    /// <summary>Small accent text selected as a contrast-safe palette role.</summary>
+    public string CoverEyebrowColor => CoverMode == CoverMode.Dark ? AccentReverse : AccentText;
 
     /// <summary>How far the cover gradient lifts toward white at its lightest corner.</summary>
     public double CoverLift { get; init; } = 0.10;

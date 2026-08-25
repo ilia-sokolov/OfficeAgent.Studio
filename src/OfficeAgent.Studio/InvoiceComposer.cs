@@ -57,7 +57,7 @@ public sealed class InvoiceComposer
         // The letterhead goes into the paragraph a blank document already has, so the
         // wordmark opens the page rather than following an empty line.
         string? wordmark = null;
-        if (_design.Wordmark is { Length: > 0 } mark)
+        if (_design.Logo is null && _design.Wordmark is { Length: > 0 } mark)
         {
             wordmark = await FillFirstAsync(id, $"{_design.WordmarkDot} {mark}", ct);
             lines.Add((wordmark, "wordmark"));
@@ -97,6 +97,12 @@ public sealed class InvoiceComposer
 
         if (invoice.Notes is { Length: > 0 } notes)
             lines.Add((await AppendAsync(id, notes, ct), "notes"));
+
+        if (_design.Logo is { } logo)
+            await ApplyAsync(id, new PlanOperation[]
+            {
+                logo.InsertBefore(lines[0].ParaId, maximumWidth: 160, maximumHeight: 64)
+            }, ct);
 
         await StyleAsync(id, lines, invoice, ct);
 

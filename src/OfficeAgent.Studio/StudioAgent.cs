@@ -165,6 +165,7 @@ public sealed class StudioAgent
           "rationale": "Two or three sentences explaining the visual decisions.",
           "wordmark": "client name or a concise brand name",
           "eyebrowUppercase": true,
+          "coverMode": "dark",
           "palette": {
             "ink": "12161C", "inkDeep": "23282F", "paper": "FFFFFF",
             "wash": "F4F1ED", "washDeep": "EAE4DA", "body": "2B3138",
@@ -190,6 +191,8 @@ public sealed class StudioAgent
         Rules:
         - Colours are six hexadecimal digits without '#'. Ink is a dark cover colour; paper
           is light; wash and washDeep are subtle paper tints.
+        - coverMode is either "dark" or "light". Choose the cover treatment that fits the
+          brief; section and closing slides remain dark reverse surfaces.
         - Normal-size text must reach 4.5:1 contrast against its actual ground. Accent on
           wash is large text and must reach 3:1. If uncertain, choose conservative tones.
         - accentText is the darker text-safe version of accent. accentReverse is a light

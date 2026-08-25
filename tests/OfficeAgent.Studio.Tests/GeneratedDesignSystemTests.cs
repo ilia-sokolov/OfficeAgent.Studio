@@ -22,8 +22,47 @@ public class GeneratedDesignSystemTests
         Assert.Equal("C8632B", normalized.Palette.Accent);
         Assert.Equal("Georgia", normalized.Typography.DisplayFont);
         Assert.Equal(normalized.Wordmark, design.Wordmark);
+        Assert.Equal(CoverMode.Dark, design.CoverMode);
         Assert.Equal(normalized.Geometry.Margin, design.Margin);
         Assert.True(DesignSystem.Contrast(design.Body, design.Paper) >= 4.5);
+    }
+
+    [Fact]
+    public void Accepts_a_light_cover_and_rejects_unknown_cover_modes()
+    {
+        var source = TestPlans.DesignSystem();
+        var normalized = DesignSystemPlanValidator.NormalizeAndValidate(
+            source with { CoverMode = " LIGHT " });
+
+        Assert.Equal("light", normalized.CoverMode);
+        Assert.Equal(
+            CoverMode.Light,
+            DesignSystemPlanValidator.ToDesignSystem(normalized).CoverMode);
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            DesignSystemPlanValidator.NormalizeAndValidate(
+                source with { CoverMode = "automatic" }));
+        Assert.Contains("coverMode", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Existing_schema_one_artifacts_without_cover_mode_remain_dark()
+    {
+        var root = TemporaryRoot();
+        try
+        {
+            var path = Path.Combine(root, "legacy.json");
+            var node = JsonSerializer.SerializeToNode(TestPlans.DesignSystem())!.AsObject();
+            node.Remove("CoverMode");
+            node.Remove("coverMode");
+            File.WriteAllText(path, node.ToJsonString());
+
+            Assert.Equal(CoverMode.Dark, DesignSystemFiles.Load(path).CoverMode);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -211,6 +250,65 @@ public class GeneratedDesignSystemTests
                     _ => null
                 }));
             Assert.Contains("either", error.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Runtime_settings_apply_a_light_cover_and_a_validated_logo()
+    {
+        var root = TemporaryRoot();
+        try
+        {
+            var logoPath = Path.Combine(root, "logo.png");
+            File.WriteAllBytes(logoPath, Backdrop.Gradient("C8632B", "A34E1F", 80, 40));
+
+            var design = DesignSystemFiles.Resolve(name => name switch
+            {
+                "OFFICEAGENT_STUDIO_COVER_MODE" => "light",
+                "OFFICEAGENT_STUDIO_LOGO" => logoPath,
+                "OFFICEAGENT_STUDIO_LOGO_ALT" => "Northwind symbol",
+                _ => null
+            });
+
+            Assert.Equal(CoverMode.Light, design.CoverMode);
+            Assert.NotNull(design.Logo);
+            Assert.Equal("Northwind symbol", design.Logo!.AltText);
+
+            var plain = Backdrop.Gradient(
+                design.CoverBackgroundStart, design.CoverBackgroundEnd, 320, 180,
+                lift: design.CoverLift);
+            var branded = Backdrop.Gradient(
+                design.CoverBackgroundStart, design.CoverBackgroundEnd, 320, 180,
+                lift: design.CoverLift, logo: design.Logo);
+            Assert.False(plain.SequenceEqual(branded));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Runtime_settings_reject_invalid_cover_and_logo_inputs()
+    {
+        var coverError = Assert.Throws<ArgumentException>(() =>
+            DesignSystemFiles.Resolve(name =>
+                name == "OFFICEAGENT_STUDIO_COVER_MODE" ? "sepia" : null));
+        Assert.Contains("dark", coverError.Message, StringComparison.Ordinal);
+
+        var root = TemporaryRoot();
+        try
+        {
+            var logoPath = Path.Combine(root, "logo.png");
+            File.WriteAllText(logoPath, "not an image");
+            var logoError = Assert.Throws<ArgumentException>(() =>
+                DesignSystemFiles.Resolve(name =>
+                    name == "OFFICEAGENT_STUDIO_LOGO" ? logoPath : null));
+            Assert.Contains("not a PNG", logoError.Message, StringComparison.Ordinal);
         }
         finally
         {

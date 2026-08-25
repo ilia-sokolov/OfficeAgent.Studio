@@ -118,6 +118,7 @@ internal static class TestPlans
         Rationale = "A dark editorial foundation gives the work authority. A restrained burnt accent adds warmth without weakening data clarity.",
         Wordmark = "northwind",
         EyebrowUppercase = true,
+        CoverMode = "dark",
         Palette = new DesignPalettePlan
         {
             Ink = "12161C",

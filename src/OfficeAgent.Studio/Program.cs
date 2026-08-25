@@ -99,7 +99,8 @@ internal static class StudioProgram
                 var artifactName = $"design-system-{stamp}.json";
                 var artifactPath = await DesignSystemFiles.SaveAsync(plan, output, artifactName, ct);
                 Console.WriteLine($"  → {artifactPath}");
-                var generated = DesignSystemFiles.Load(artifactPath);
+                var generated = DesignSystemFiles.ApplyRuntime(
+                    DesignSystemFiles.Load(artifactPath), setting);
 
                 Console.WriteLine("Composing the design-system previews…");
                 await ComposeBackdropAsync(
@@ -280,6 +281,10 @@ internal static class StudioProgram
           OFFICEAGENT_STUDIO_BRAND_FILE
                                       generated design-system JSON (instead of BRAND)
           OFFICEAGENT_STUDIO_CLIENT   name on the cover and in the footer
+          OFFICEAGENT_STUDIO_COVER_MODE
+                                      dark or light; overrides the selected design system
+          OFFICEAGENT_STUDIO_LOGO     non-interlaced PNG used on covers and letterheads
+          OFFICEAGENT_STUDIO_LOGO_ALT accessible logo description (default: brand name)
           OFFICEAGENT_STUDIO_MODEL_PROVIDER
                                       claude (default) or azure-foundry
 

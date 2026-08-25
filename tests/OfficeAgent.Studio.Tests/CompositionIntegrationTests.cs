@@ -80,7 +80,13 @@ public class CompositionIntegrationTests
             using var services = Services(root);
             var client = services.GetRequiredService<OfficeAgentClient>();
             var publisher = new OutputTransaction(client, root);
-            var design = DesignSystem.Default;
+            var logoPath = Path.Combine(root, "test-logo.png");
+            File.WriteAllBytes(logoPath, Backdrop.Gradient("C8632B", "A34E1F", 80, 40));
+            var design = DesignSystem.Default with
+            {
+                CoverMode = CoverMode.Light,
+                Logo = LogoAsset.Load(logoPath, "Test brand logo")
+            };
 
             await publisher.ComposeAsync(
                 "deck.pptx",
@@ -127,11 +133,20 @@ public class CompositionIntegrationTests
                 Assert.Equal(TestPlans.Deck().Slides.Length, deck.PresentationPart!.SlideParts.Count());
 
             using (var report = WordprocessingDocument.Open(Path.Combine(root, "report.docx"), false))
+            {
                 Assert.Contains(TestPlans.Document().Title, DocumentText(report));
+                Assert.NotEmpty(report.MainDocumentPart!.ImageParts);
+            }
             using (var invoice = WordprocessingDocument.Open(Path.Combine(root, "invoice.docx"), false))
+            {
                 Assert.Contains("€", DocumentText(invoice));
+                Assert.NotEmpty(invoice.MainDocumentPart!.ImageParts);
+            }
             using (var manual = WordprocessingDocument.Open(Path.Combine(root, "manual.docx"), false))
+            {
                 Assert.Contains(TestPlans.Manual().Title, DocumentText(manual));
+                Assert.NotEmpty(manual.MainDocumentPart!.ImageParts);
+            }
         }
         finally
         {

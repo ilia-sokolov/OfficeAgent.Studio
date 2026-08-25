@@ -136,7 +136,11 @@ public sealed class DeckComposer
             {
                 Target = Slide(slideId),
                 Base64Bytes = Convert.ToBase64String(
-                    Backdrop.Gradient(_design.Ink, _design.InkDeep)),
+                    Backdrop.Gradient(
+                        _design.CoverBackgroundStart,
+                        _design.CoverBackgroundEnd,
+                        lift: _design.CoverLift,
+                        logo: _design.Logo)),
                 ImageType = "png"
             }
         }, ct);
@@ -158,7 +162,7 @@ public sealed class DeckComposer
                 Target = new TextSpanAnchor { ParaId = $"slide{slideId}/shape2/p0", Expect = string.Empty },
                 FontFamily = _design.DisplayFont,
                 SizeHalfPoints = _design.DisplaySize,
-                Color = _design.Reverse,
+                Color = _design.CoverTitleColor,
                 Alignment = "left"
             }
         }, ct);
@@ -167,11 +171,11 @@ public sealed class DeckComposer
 
         if (cover.Subtitle is { Length: > 0 } subtitle)
             await AddTextAsync(id, slideId, subtitle, frame.Content, _design.SubtitleSize,
-                _design.TextFont, _design.MutedReverse, ct);
+                _design.TextFont, _design.CoverMutedColor, ct);
 
         if (cover.Eyebrow is { Length: > 0 } eyebrow)
             await AddTextAsync(id, slideId, Eyebrow(eyebrow), frame.Eyebrow,
-                _design.CaptionSize, _design.TextFont, _design.AccentReverse, ct, EyebrowHeight);
+                _design.CaptionSize, _design.TextFont, _design.CoverEyebrowColor, ct, EyebrowHeight);
     }
 
     // ── the rest ──────────────────────────────────────────────────────────────

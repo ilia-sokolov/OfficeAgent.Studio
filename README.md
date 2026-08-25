@@ -1,6 +1,6 @@
 # OfficeAgent.Studio
 
-**A one-line brief in. A PowerPoint deck or a Word report out — one palette, one type
+**A one-line brief in. A PowerPoint deck or a Word report out - one palette, one type
 scale, every element on the same margin.**
 
 ![Two slides from a generated deck: a dark cover with an accent rule, and a statistic slide with the number on a wash card](docs/images/deck.png)
@@ -22,7 +22,7 @@ the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
 
 | Command | Output | Shape |
 | --- | --- | --- |
-| `both` | deck + report | The default. Same brief, planned independently — the figures will not agree |
+| `both` | deck + report | The default. Same brief, planned independently - the figures will not agree |
 | `deck` | `.pptx` | 8–10 slides from seven slide roles |
 | `doc` | `.docx` | 12–18 blocks: cover page, headings, bullets, a pull quote, a table |
 | `invoice` | `.docx` | Line items, computed totals, payment terms |
@@ -53,8 +53,8 @@ document says, and what it looks like. It is good at the first and unreliable at
 because looking consistent means making a hundred small decisions identically, ten times
 over.
 
-So this splits them. The model returns content as JSON — a slide's role, its title, its one
-number — and is told that anything it says about fonts, colours, sizes or positions is
+So this splits them. The model returns content as JSON - a slide's role, its title, its one
+number - and is told that anything it says about fonts, colours, sizes or positions is
 discarded. A composer turns that JSON into OfficeAgent.NET operations, applying
 `DesignSystem` as it goes.
 
@@ -109,7 +109,7 @@ If the checkout is elsewhere, also pass
 `-p:OfficeAgentSource=/absolute/path/to/OfficeAgent.NET/src`. The build prints which source
 it selected.
 
-You do not need Microsoft Office to generate files — only to open them.
+You do not need Microsoft Office to generate files - only to open them.
 
 ### Environment
 
@@ -118,12 +118,15 @@ You do not need Microsoft Office to generate files — only to open them.
 | `OFFICEAGENT_STUDIO_OUTPUT` | `./output` | Where files are written |
 | `OFFICEAGENT_STUDIO_CLIENT` | `Northwind Traders` | The name on the cover and in the footer |
 | `OFFICEAGENT_STUDIO_BRAND` | `default` | Which palette: `default` or `meridian`. An unknown name stops the run |
-| `OFFICEAGENT_STUDIO_BRAND_FILE` | — | Generated design-system JSON; cannot be combined with `OFFICEAGENT_STUDIO_BRAND` |
+| `OFFICEAGENT_STUDIO_BRAND_FILE` | - | Generated design-system JSON; cannot be combined with `OFFICEAGENT_STUDIO_BRAND` |
+| `OFFICEAGENT_STUDIO_COVER_MODE` | design system | `dark` or `light`; overrides the generated or registered cover treatment |
+| `OFFICEAGENT_STUDIO_LOGO` | - | Non-interlaced PNG used on deck/report/manual covers and the invoice letterhead |
+| `OFFICEAGENT_STUDIO_LOGO_ALT` | brand name | Accessible description stored with Word logo images |
 | `OFFICEAGENT_STUDIO_MODEL_PROVIDER` | `claude` | Model client: `claude` or `azure-foundry` |
 | `OFFICEAGENT_STUDIO_CLAUDE_EXECUTABLE` | `claude` | Claude Code executable or absolute path |
 | `OFFICEAGENT_STUDIO_CLAUDE_TIMEOUT_SECONDS` | `300` | Positive Claude CLI timeout in seconds |
-| `AZURE_OPENAI_ENDPOINT` | — | Required Foundry/Azure OpenAI endpoint |
-| `AZURE_OPENAI_DEPLOYMENT` | — | Required deployed chat-model name; `AZURE_OPENAI_MODEL` is an alias |
+| `AZURE_OPENAI_ENDPOINT` | - | Required Foundry/Azure OpenAI endpoint |
+| `AZURE_OPENAI_DEPLOYMENT` | - | Required deployed chat-model name; `AZURE_OPENAI_MODEL` is an alias |
 | `AZURE_OPENAI_API_KEY` | Entra ID | Optional key; otherwise `DefaultAzureCredential` is used |
 
 ```bash
@@ -146,7 +149,7 @@ OfficeAgent.NET does not have yet.
 - **Everything in the output is invented.** The model is told to write specific, plausible
   figures. It has no data source. Treat every number as fiction.
 - **Content still needs review.** A generated invoice once charged VAT *and* stated the VAT
-  was reverse-charged — a domain error no layout check catches. Arithmetic is done in C#;
+  was reverse-charged - a domain error no layout check catches. Arithmetic is done in C#;
   tax treatment and factual claims are not.
 - **The model does not always follow its own rules.** Plans are validated before a file is
   created and retried up to three times. A run stops cleanly if all three violate the
@@ -156,13 +159,6 @@ OfficeAgent.NET does not have yet.
 
 **Design and output**
 
-- **No logo image. [sample]** `Wordmark` draws a coloured disc and the brand name, and only
-  on the invoice — the deck and report covers carry no mark at all. OfficeAgent.NET does
-  support `insertImage` in both formats, and this sample already embeds PNGs as backgrounds,
-  so a logo is unwritten wiring rather than a missing capability.
-- **The cover is always dark. [sample]** `cover` is full-bleed ink and `section` and
-  `closing` invert to it. A brand whose covers are white is not expressible without editing
-  `DeckComposer`.
 - **The Office theme is not set. [library]** Files carry your colours as direct formatting
   over the stock Office theme, so the PowerPoint colour picker still offers Office blue, and
   *Reset Slide* reverts a slide to Calibri. Anyone editing the file by hand drifts
@@ -177,7 +173,7 @@ OfficeAgent.NET does not have yet.
 - **Fonts are referenced, not embedded. [library]** A brand face the reader does not have is
   silently substituted, and because positions are absolute, substitution can overflow a box.
   Pick faces your readers have.
-- **No charts. [library]** And no images in the content — the backdrops are generated PNGs,
+- **No charts. [library]** And no images in the content - the backdrops are generated PNGs,
   but nothing places a picture in the flow **[sample]**. No table of contents or
   cross-references **[library]**: there is no verb for inserting a field.
 - **Long text can still overflow. [sample]** The design system constrains layout; it does
@@ -218,7 +214,7 @@ A deck is built from seven roles, and the role decides the whole appearance of t
 
 | Role | What it is for |
 | --- | --- |
-| `cover` | Full-bleed ink, accent rule, the deck's title |
+| `cover` | Configurable dark or light gradient, optional logo, accent rule, the deck's title |
 | `section` | A divider announcing what follows |
 | `statement` | One sentence that has to land |
 | `bullets` | Three or four lines |
@@ -227,14 +223,14 @@ A deck is built from seven roles, and the role decides the whole appearance of t
 | `closing` | The ask |
 
 Adding a role means editing the instructions in `StudioAgent.cs`, the shape in `Brief.cs`,
-the contract in `PlanValidator.cs`, and three places in `DeckComposer.cs` — `LayoutFor`,
+the contract in `PlanValidator.cs`, and three places in `DeckComposer.cs` - `LayoutFor`,
 `IsCentred` and the styling switch. If the role introduces a new text-on-ground combination,
 add it to `ContrastTests.Pairings()` too; that list does not maintain itself.
 
 A whole new document type is more: a plan record in `Templates.cs`, a fifth agent in
 `StudioAgent.cs`, a validator branch, a composer of two to four hundred lines, and a branch
 in `Program.cs`. The four composers share no base class, so `FillFirstAsync`, `AppendAsync`
-and `ApplyAsync` are duplicated in each — worth extracting before you write a fifth.
+and `ApplyAsync` are duplicated in each - worth extracting before you write a fifth.
 
 Every composer does share `ComposerSession`, which removes failed provider registrations.
 `OutputTransaction` composes under a private temporary name and publishes the requested
@@ -252,8 +248,8 @@ dotnet run --project src/OfficeAgent.Studio -- design-system `
 
 The command makes one model call and publishes three files with the same timestamp:
 
-- `design-system-*.json` — the reusable, reviewable source of truth.
-- `design-system-preview-*.pptx` and `.docx` — real Office previews using that system.
+- `design-system-*.json` - the reusable, reviewable source of truth.
+- `design-system-preview-*.pptx` and `.docx` - real Office previews using that system.
 
 Use the artifact for later runs without regenerating it:
 
@@ -263,14 +259,14 @@ dotnet run --project src/OfficeAgent.Studio -- both "Quarterly review"
 ```
 
 The generated file is not arbitrary styling code. It can choose a bounded palette, portable
-font families, type scales, margins and backdrop strengths. Before publication, the runtime
+font families, type scales, margins, backdrop strengths and a light or dark cover. Before publication, the runtime
 normalizes hexadecimal colours and rejects unreadable contrast, unsupported fonts, inverted
 type hierarchies, invalid geometry, unknown fields and unsupported schema versions. Content
 agents still cannot alter styling per slide or paragraph.
 
 For a hand-authored system, a second brand ships as a worked example. `meridian` is
-deliberately unlike the default in every dimension the system controls — cooler ink, a blue
-accent instead of orange, sans display type instead of serif — so you can see what changes
+deliberately unlike the default in every dimension the system controls - cooler ink, a blue
+accent instead of orange, sans display type instead of serif - so you can see what changes
 and what does not:
 
 ```bash
@@ -289,7 +285,8 @@ public static readonly DesignSystem Acme = Default with
     AccentReverse = "5FA8FF", // the accent where it has to be read on ink
     DisplayFont = "Georgia",
     TextFont    = "Arial",
-    Wordmark    = "acme"
+    Wordmark    = "acme",
+    CoverMode   = CoverMode.Light
 };
 ```
 
@@ -300,13 +297,13 @@ OFFICEAGENT_STUDIO_BRAND=acme dotnet run --project src/OfficeAgent.Studio -- inv
 ```
 
 Registering does two things: the CLI can select it, and the contrast tests measure it. Run
-`dotnet test` after adding one — the suite generates its cases from the registry, so a
+`dotnet test` after adding one - the suite generates its cases from the registry, so a
 palette that fails the pairings it checks fails the build rather than reaching a reader.
 
 Two rules the tests enforce, worth knowing before you pick colours:
 
 - **`AccentText` must reach 4.5:1 on `Paper`**, and must not be lighter than `Accent`. If
-  your brand accent already clears 4.5:1, set both to the same value — the pair exists so a
+  your brand accent already clears 4.5:1, set both to the same value - the pair exists so a
   bright mark *can* have a darker twin for text, not so that it must.
 - **`MutedReverse` must be lighter than `Muted`.** One is for text on paper, the other for
   text on the ink cover; setting them to the same value loses the cover subtitle.
@@ -320,8 +317,23 @@ OFFICEAGENT_STUDIO_BRAND=acme dotnet run --project src/OfficeAgent.Studio -- bac
 `backdrop` renders your ink and accent offline, so you can see the palette on a real slide
 before committing anyone's time to it.
 
+Supply a real logo per run rather than embedding a machine-specific file path in the design
+artifact:
+
+```powershell
+$env:OFFICEAGENT_STUDIO_LOGO = "C:\brand\acme-logo.png"
+$env:OFFICEAGENT_STUDIO_LOGO_ALT = "Acme logo"
+$env:OFFICEAGENT_STUDIO_COVER_MODE = "light" # optional runtime override
+dotnet run --project src/OfficeAgent.Studio -- both "Quarterly review"
+```
+
+The logo loader accepts bounded, non-interlaced PNGs (RGB, RGBA, grayscale or indexed
+colour). Word outputs contain a real image with alt text. PowerPoint composites the same
+transparent asset into the generated cover background because OfficeAgent.NET 0.6 can
+insert and resize a slide image but cannot position it.
+
 `DesignSystem` holds colour, type and a few measures. Spacing, the vertical grid and slide
-geometry are still literals in the composers — see
+geometry are still literals in the composers - see
 [docs/design-system.md](docs/design-system.md) for what is and is not brandable, and for why
 the palette carries two greys and three accents.
 
@@ -331,10 +343,10 @@ the palette carries two greys and three accents.
 dotnet test
 ```
 
-86 tests, and it is worth knowing what they cover.
+112 tests, and it is worth knowing what they cover.
 
 - **Contrast**, for every registered brand: the text-and-ground pairings listed in
-  `ContrastTests.Pairings()`. That list is maintained by hand — adding a colour to a
+  `ContrastTests.Pairings()`. That list is maintained by hand - adding a colour to a
   composer does not add a case.
 - **Invoice arithmetic**: that the printed lines add up to the printed subtotal, that a
   negative tax rate is ignored rather than silently subtracted, that halves round the way a
@@ -357,4 +369,4 @@ review and optional end-to-end checks; deterministic output validity is part of 
 
 Issues and pull requests welcome, particularly new brands and new slide roles.
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

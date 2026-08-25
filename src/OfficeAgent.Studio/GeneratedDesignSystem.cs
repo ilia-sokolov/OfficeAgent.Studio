@@ -22,6 +22,9 @@ public sealed record DesignSystemPlan
     [JsonPropertyName("eyebrowUppercase")]
     public required bool EyebrowUppercase { get; init; }
 
+    [JsonPropertyName("coverMode")]
+    public string CoverMode { get; init; } = "dark";
+
     [JsonPropertyName("palette")]
     public required DesignPalettePlan Palette { get; init; }
 
@@ -125,6 +128,7 @@ internal static partial class DesignSystemPlanValidator
             Name = Text(plan.Name, "name", 2, 40),
             Rationale = Text(plan.Rationale, "rationale", 20, 600),
             Wordmark = Text(plan.Wordmark, "wordmark", 1, 40),
+            CoverMode = Cover(plan.CoverMode),
             Palette = palette,
             Typography = typography
         };
@@ -190,10 +194,28 @@ internal static partial class DesignSystemPlanValidator
         Contrast(errors, design.Reverse, design.Ink, 4.5, "reverse text on ink");
         Contrast(errors, design.MutedReverse, design.Ink, 4.5, "reverse muted text on ink");
         Contrast(errors, design.MutedReverse, design.InkDeep, 4.5, "reverse muted text on deep ink");
-        Contrast(errors, design.AccentReverse, design.CoverLightest, 4.5, "reverse accent on lifted cover");
         Contrast(errors, design.AccentReverse, design.Ink, 4.5, "reverse accent on ink");
         Contrast(errors, design.Accent, design.Wash, 3.0, "large accent text on wash");
         Contrast(errors, design.Ink, design.Paper, 4.5, "ink on paper");
+
+        // A runtime setting can override the artifact's preferred mode, so a generated
+        // palette must be safe in both treatments rather than only in the one it selected.
+        foreach (var mode in Enum.GetValues<CoverMode>())
+        {
+            var cover = design with { CoverMode = mode };
+            Contrast(errors, cover.CoverTitleColor, cover.CoverLightest, 4.5,
+                $"{mode.ToString().ToLowerInvariant()} cover title on lifted start");
+            Contrast(errors, cover.CoverTitleColor, cover.CoverBackgroundEnd, 4.5,
+                $"{mode.ToString().ToLowerInvariant()} cover title on gradient end");
+            Contrast(errors, cover.CoverMutedColor, cover.CoverLightest, 4.5,
+                $"{mode.ToString().ToLowerInvariant()} cover muted text on lifted start");
+            Contrast(errors, cover.CoverMutedColor, cover.CoverBackgroundEnd, 4.5,
+                $"{mode.ToString().ToLowerInvariant()} cover muted text on gradient end");
+            Contrast(errors, cover.CoverEyebrowColor, cover.CoverLightest, 4.5,
+                $"{mode.ToString().ToLowerInvariant()} cover accent on lifted start");
+            Contrast(errors, cover.CoverEyebrowColor, cover.CoverBackgroundEnd, 4.5,
+                $"{mode.ToString().ToLowerInvariant()} cover accent on gradient end");
+        }
 
         if (DesignSystem.Contrast(design.Paper, "000000") < 12.0)
             errors.Add("paper must remain a light ground");
@@ -234,6 +256,7 @@ internal static partial class DesignSystemPlanValidator
             Reverse = palette.Reverse,
             Wordmark = plan.Wordmark,
             EyebrowUppercase = plan.EyebrowUppercase,
+            CoverMode = Enum.Parse<CoverMode>(plan.CoverMode, ignoreCase: true),
             DisplayFont = type.DisplayFont,
             TextFont = type.TextFont,
             DisplaySize = type.DisplaySize,
@@ -272,6 +295,14 @@ internal static partial class DesignSystemPlanValidator
             throw new InvalidOperationException(
                 $"{name} '{text}' is not portable. Choose one of: {string.Join(", ", PortableFonts.Order())}.");
         return canonical;
+    }
+
+    private static string Cover(string? value)
+    {
+        var cover = string.IsNullOrWhiteSpace(value) ? "dark" : value.Trim().ToLowerInvariant();
+        return cover is "dark" or "light"
+            ? cover
+            : throw new InvalidOperationException("coverMode must be 'dark' or 'light'.");
     }
 
     private static string Text(string? value, string name, int minimum, int maximum)
@@ -396,6 +427,37 @@ internal static class DesignSystemFiles
             throw new ArgumentException(
                 "Set either OFFICEAGENT_STUDIO_BRAND_FILE or OFFICEAGENT_STUDIO_BRAND, not both.");
 
-        return string.IsNullOrWhiteSpace(file) ? DesignSystem.ByName(name) : Load(file);
+        var design = string.IsNullOrWhiteSpace(file) ? DesignSystem.ByName(name) : Load(file);
+        return ApplyRuntime(design, setting);
+    }
+
+    internal static DesignSystem ApplyRuntime(DesignSystem design, Func<string, string?> setting)
+    {
+        var coverSetting = setting("OFFICEAGENT_STUDIO_COVER_MODE");
+        var coverMode = string.IsNullOrWhiteSpace(coverSetting)
+            ? design.CoverMode
+            : coverSetting.Trim().ToLowerInvariant() switch
+            {
+                "dark" => CoverMode.Dark,
+                "light" => CoverMode.Light,
+                _ => throw new ArgumentException(
+                    "OFFICEAGENT_STUDIO_COVER_MODE must be 'dark' or 'light'.")
+            };
+
+        var logoPath = setting("OFFICEAGENT_STUDIO_LOGO");
+        LogoAsset? logo = null;
+        if (!string.IsNullOrWhiteSpace(logoPath))
+        {
+            var configuredAlt = setting("OFFICEAGENT_STUDIO_LOGO_ALT");
+            var alt = string.IsNullOrWhiteSpace(configuredAlt)
+                ? string.IsNullOrWhiteSpace(design.Wordmark) ? "Brand logo" : $"{design.Wordmark} logo"
+                : configuredAlt.Trim();
+            if (alt.Length > 200 || alt.Any(char.IsControl))
+                throw new ArgumentException(
+                    "OFFICEAGENT_STUDIO_LOGO_ALT must contain at most 200 printable characters.");
+            logo = LogoAsset.Load(logoPath, alt);
+        }
+
+        return design with { CoverMode = coverMode, Logo = logo };
     }
 }

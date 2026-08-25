@@ -78,6 +78,12 @@ public sealed class ManualComposer
                     "callout", Kind: callout.Kind));
         }
 
+        if (_design.Logo is { } logo)
+            await ApplyAsync(id, new PlanOperation[]
+            {
+                logo.InsertBefore(lines[0].ParaId, maximumWidth: 170, maximumHeight: 72)
+            }, ct);
+
         await StyleAsync(id, lines, manual, ct);
     }
 
@@ -138,7 +144,7 @@ public sealed class ManualComposer
         var op = line.Role switch
         {
             "title" => Style(line, _design.DisplayFont, _design.DocumentTitleSize, _design.Ink,
-                spaceBefore: 2400, spaceAfter: 160),
+                spaceBefore: _design.Logo is null ? 2400 : 900, spaceAfter: 160),
             "subtitle" => Style(line, _design.TextFont, _design.DocumentQuoteSize, _design.Muted,
                 spaceAfter: 400),
             "meta" => Style(line, _design.TextFont, _design.DocumentCaptionSize, _design.Muted,

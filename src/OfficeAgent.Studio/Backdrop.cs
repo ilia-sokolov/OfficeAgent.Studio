@@ -18,10 +18,19 @@ public static class Backdrop
     /// A diagonal wash between two colours, with a soft light at one corner. Big enough to
     /// scale to a slide or a page without banding, small enough to embed without thought.
     /// </summary>
-    public static byte[] Gradient(string fromHex, string toHex, int width = 960, int height = 540)
+    public static byte[] Gradient(
+        string fromHex,
+        string toHex,
+        int width = 960,
+        int height = 540,
+        double lift = 0.10,
+        LogoAsset? logo = null)
     {
         var (r0, g0, b0) = Rgb(fromHex);
         var (r1, g1, b1) = Rgb(toHex);
+
+        (int X, int Y, int Width, int Height)? logoBox =
+            logo is null ? null : LogoBox(logo, width, height);
 
         return Png(width, height, (x, y) =>
         {
@@ -30,14 +39,63 @@ public static class Backdrop
             var t = Ease((x + y) / 2.0);
 
             // A slight lift towards the top-left keeps a large flat area from looking dead.
-            var lift = 0.10 * Math.Max(0, 1 - Math.Sqrt((x * x) + (y * y)));
+            var localLift = lift * Math.Max(0, 1 - Math.Sqrt((x * x) + (y * y)));
 
-            return (
-                Mix(r0, r1, t, lift),
-                Mix(g0, g1, t, lift),
-                Mix(b0, b1, t, lift));
+            var ground = (
+                R: Mix(r0, r1, t, localLift),
+                G: Mix(g0, g1, t, localLift),
+                B: Mix(b0, b1, t, localLift));
+
+            return logoBox is null
+                ? ground
+                : CompositeLogo(ground, logo!.Raster, logoBox.Value, x, y, width, height);
         });
     }
+
+    private static (byte R, byte G, byte B) CompositeLogo(
+        (byte R, byte G, byte B) ground,
+        LogoRaster logo,
+        (int X, int Y, int Width, int Height) box,
+        double normalizedX,
+        double normalizedY,
+        int canvasWidth,
+        int canvasHeight)
+    {
+        var x = Math.Min(canvasWidth - 1, (int)Math.Round(normalizedX * (canvasWidth - 1)));
+        var y = Math.Min(canvasHeight - 1, (int)Math.Round(normalizedY * (canvasHeight - 1)));
+        if (x < box.X || x >= box.X + box.Width || y < box.Y || y >= box.Y + box.Height)
+            return ground;
+
+        // Sampling at the centre of each output pixel avoids dropping the last source row
+        // when a large logo is reduced to a cover-sized mark.
+        var sourceX = Math.Min(
+            logo.Width - 1,
+            (int)(((x - box.X) + 0.5) * logo.Width / box.Width));
+        var sourceY = Math.Min(
+            logo.Height - 1,
+            (int)(((y - box.Y) + 0.5) * logo.Height / box.Height));
+        var offset = ((sourceY * logo.Width) + sourceX) * 4;
+        var alpha = logo.Rgba[offset + 3] / 255.0;
+
+        return (
+            BlendChannel(logo.Rgba[offset], ground.R, alpha),
+            BlendChannel(logo.Rgba[offset + 1], ground.G, alpha),
+            BlendChannel(logo.Rgba[offset + 2], ground.B, alpha));
+    }
+
+    private static (int X, int Y, int Width, int Height) LogoBox(
+        LogoAsset logo, int canvasWidth, int canvasHeight)
+    {
+        var maximumWidth = Math.Max(1, (int)Math.Round(canvasWidth * 0.20));
+        var maximumHeight = Math.Max(1, (int)Math.Round(canvasHeight * 0.10));
+        var (width, height) = logo.Fit(maximumWidth, maximumHeight);
+        var insetX = Math.Max(1, (int)Math.Round(canvasWidth * 0.069));
+        var insetY = Math.Max(1, (int)Math.Round(canvasHeight * 0.08));
+        return (canvasWidth - insetX - width, insetY, width, height);
+    }
+
+    private static byte BlendChannel(byte foreground, byte background, double alpha) =>
+        (byte)Math.Clamp(Math.Round((foreground * alpha) + (background * (1 - alpha))), 0, 255);
 
     /// <summary>
     /// A photographic backdrop: layered ridges under a warm sky, with haze, a vignette and

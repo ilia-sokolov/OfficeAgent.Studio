@@ -52,16 +52,22 @@ public class ContrastTests
             Normal("subheading on paper", brand.AccentText, brand.Paper);
             Normal("subheading on the wash", brand.AccentText, brand.RenderedWash);
 
-            // ── the ink cover and the reverse slides ──
-            Normal("cover title on ink", brand.Reverse, brand.Ink);
-            Normal("cover subtitle on ink", brand.MutedReverse, brand.Ink);
-            Normal("cover subtitle on deep ink", brand.MutedReverse, brand.InkDeep);
+            // ── reverse slides and both selectable cover treatments ──
+            Normal("reverse title on ink", brand.Reverse, brand.Ink);
+            Normal("reverse subtitle on ink", brand.MutedReverse, brand.Ink);
+            Normal("reverse subtitle on deep ink", brand.MutedReverse, brand.InkDeep);
+            Normal("reverse eyebrow on ink", brand.AccentReverse, brand.Ink);
 
-            // The cover gradient lifts toward white in one corner, so the eyebrow sits on a
-            // lighter ground than Ink. Measured against the lightest the backdrop reaches,
-            // which is what caught the mark accent being used here in the first place.
-            Normal("eyebrow on the lifted cover", brand.AccentReverse, brand.CoverLightest);
-            Normal("eyebrow on flat ink", brand.AccentReverse, brand.Ink);
+            foreach (var mode in Enum.GetValues<CoverMode>())
+            {
+                var cover = brand with { CoverMode = mode };
+                Normal($"{mode} cover title on start", cover.CoverTitleColor, cover.CoverLightest);
+                Normal($"{mode} cover title on end", cover.CoverTitleColor, cover.CoverBackgroundEnd);
+                Normal($"{mode} cover subtitle on start", cover.CoverMutedColor, cover.CoverLightest);
+                Normal($"{mode} cover subtitle on end", cover.CoverMutedColor, cover.CoverBackgroundEnd);
+                Normal($"{mode} cover eyebrow on start", cover.CoverEyebrowColor, cover.CoverLightest);
+                Normal($"{mode} cover eyebrow on end", cover.CoverEyebrowColor, cover.CoverBackgroundEnd);
+            }
 
             // ── the stat card ──
             // The number is set at 48pt, which is large text by any definition, so the

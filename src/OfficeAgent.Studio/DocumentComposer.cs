@@ -70,6 +70,12 @@ public sealed class DocumentComposer
             }
         }
 
+        if (_design.Logo is { } logo)
+            await ApplyAsync(id, new PlanOperation[]
+            {
+                logo.InsertBefore(lines[0].ParaId, maximumWidth: 170, maximumHeight: 72)
+            }, ct);
+
         await StyleAsync(id, lines, ct);
         await DressAsync(id, plan, client, ct);
 
@@ -118,7 +124,12 @@ public sealed class DocumentComposer
             {
                 Scope = "firstPage",
                 Base64Bytes = Convert.ToBase64String(
-                    Backdrop.Gradient(_design.Ink, _design.InkDeep, width: 850, height: 1100)),
+                    Backdrop.Gradient(
+                        _design.CoverBackgroundStart,
+                        _design.CoverBackgroundEnd,
+                        width: 850,
+                        height: 1100,
+                        lift: _design.CoverLift)),
                 ImageType = "png"
             },
             // Behind the body, a warm paper wash. It ends at a tone distinctly off white,
@@ -256,14 +267,14 @@ public sealed class DocumentComposer
 
     private FormatOp StyleFor(string paraId, string role) => role switch
     {
-        // The cover sits alone on the ink page, so its three lines are set in the reverse
-        // side of the ramp: white for the title, the lighter grey for what follows. The
-        // paper-side greys would be all but invisible here.
-        "title" => Style(paraId, _design.DisplayFont, _design.DocumentTitleSize, _design.Reverse,
-            spaceBefore: 2400, spaceAfter: 160),
-        "subtitle" => Style(paraId, _design.TextFont, _design.DocumentQuoteSize, _design.MutedReverse,
+        // Cover colours switch as a group: reverse roles on ink, paper-side roles on a
+        // light cover. A supplied logo already occupies the top of the page, so the title
+        // needs less additional space before it.
+        "title" => Style(paraId, _design.DisplayFont, _design.DocumentTitleSize, _design.CoverTitleColor,
+            spaceBefore: _design.Logo is null ? 2400 : 900, spaceAfter: 160),
+        "subtitle" => Style(paraId, _design.TextFont, _design.DocumentQuoteSize, _design.CoverMutedColor,
             spaceAfter: 400),
-        "meta" => Style(paraId, _design.TextFont, _design.DocumentCaptionSize, _design.MutedReverse,
+        "meta" => Style(paraId, _design.TextFont, _design.DocumentCaptionSize, _design.CoverMutedColor,
             spaceAfter: 60),
         "heading" => Style(paraId, _design.DisplayFont, _design.DocumentHeadingSize, _design.Ink,
             spaceBefore: 400, spaceAfter: 120),

@@ -36,7 +36,7 @@ public sealed class BackdropSample
 
     /// <summary>
     /// One slide per strength, each with the same photograph behind the same two lines of
-    /// text, plus a control slide with no background at all.
+    /// text, plus a first slide showing the selected cover mode and optional logo.
     /// </summary>
     public Task<string> ComposeDeckAsync(string fileName, CancellationToken ct = default) =>
         ComposerSession.RunAsync(
@@ -46,6 +46,13 @@ public sealed class BackdropSample
     {
         var photograph = Convert.ToBase64String(
             Backdrop.Photograph(_design.Ink, _design.Accent, width: 1280, height: 720));
+        var cover = Convert.ToBase64String(Backdrop.Gradient(
+            _design.CoverBackgroundStart,
+            _design.CoverBackgroundEnd,
+            width: 1280,
+            height: 720,
+            lift: _design.CoverLift,
+            logo: _design.Logo));
 
         // The label is set as the slide's title at insert time. Inserting with no title at
         // all leaves the layout's placeholder unrealised, and there is then no paragraph to
@@ -65,8 +72,8 @@ public sealed class BackdropSample
         {
             var slideId = uint.Parse(slides[i].Path.Substring("slide#".Length));
 
-            // The blank deck's own first slide is the control: the same words, nothing behind
-            // them. Its placeholder is empty, so it is filled rather than replaced.
+            // The blank deck's own first slide is the design-system cover sample. Its
+            // placeholder is empty, so it is filled rather than replaced.
             var strength = i == 0 ? (double?)null : Strengths[i - 1];
 
             if (strength is null)
@@ -75,7 +82,7 @@ public sealed class BackdropSample
                     new ChangeTextOp
                     {
                         Target = new TextSpanAnchor { ParaId = $"slide{slideId}/shape2/p0", Expect = string.Empty },
-                        With = "No background",
+                        With = $"{_design.CoverMode} cover",
                         Mode = ChangeMode.Direct
                     }
                 }, ct);
@@ -94,10 +101,11 @@ public sealed class BackdropSample
             else
                 await ApplyAsync(id, new PlanOperation[]
                 {
-                    new FormatOp
+                    new BackgroundImageOp
                     {
                         Target = new NodeAnchor { Kind = "slide", Path = $"slide#{slideId}" },
-                        FillColor = _design.Paper
+                        Base64Bytes = cover,
+                        ImageType = "png"
                     }
                 }, ct);
 
@@ -134,8 +142,9 @@ public sealed class BackdropSample
     }
 
     /// <summary>
-    /// The same comparison as a document: a full-strength cover and a low-opacity body page,
-    /// so the two strengths that matter can be judged at reading size rather than across a room.
+    /// The same comparison as a document: the selected designed cover and a low-opacity
+    /// photographic body page, so both brand treatment and readability can be judged at
+    /// reading size rather than across a room.
     /// </summary>
     public Task<string> ComposeDocumentAsync(string fileName, CancellationToken ct = default) =>
         ComposerSession.RunAsync(
@@ -162,7 +171,7 @@ public sealed class BackdropSample
                 Target = new TextSpanAnchor { ParaId = lines[i].ParaId, Expect = string.Empty },
                 FontFamily = lines[i].Heading ? _design.DisplayFont : _design.TextFont,
                 SizeHalfPoints = lines[i].Heading ? _design.DocumentHeadingSize : _design.DocumentBodySize,
-                Color = lines[i].Heading ? _design.Reverse : _design.Body,
+                Color = lines[i].Heading ? _design.CoverTitleColor : _design.Body,
                 SpacingBeforeTwips = lines[i].Heading ? 2400 : null,
                 SpacingAfterTwips = lines[i].Heading ? 200 : 180,
                 IndentRightTwips = _design.DocumentMeasureInset,
@@ -173,6 +182,13 @@ public sealed class BackdropSample
 
         var photograph = Convert.ToBase64String(
             Backdrop.Photograph(_design.Ink, _design.Accent, width: 850, height: 1100));
+        var cover = Convert.ToBase64String(Backdrop.Gradient(
+            _design.CoverBackgroundStart,
+            _design.CoverBackgroundEnd,
+            width: 850,
+            height: 1100,
+            lift: _design.CoverLift,
+            logo: _design.Logo));
 
         await ApplyAsync(id, new PlanOperation[]
         {
@@ -185,7 +201,7 @@ public sealed class BackdropSample
             new BackgroundImageOp
             {
                 Scope = "firstPage",
-                Base64Bytes = photograph,
+                Base64Bytes = cover,
                 ImageType = "png"
             },
             new BackgroundImageOp
@@ -201,13 +217,12 @@ public sealed class BackdropSample
 
     private static readonly string[] Body =
     {
-        "The page behind this text carries the same photograph as the cover, at 12%. The " +
-        "cover carries it at full strength. Nothing else about the two pages differs.",
+        "The page behind this text carries a detailed synthetic photograph at 12%. The " +
+        "cover uses the selected design-system gradient and optional logo instead.",
 
-        "At full strength the image is the subject and text has to get out of its way - " +
-        "which is why a cover works and a body page does not. Bring it to a tenth and the " +
-        "image stops competing: it becomes a texture, the kind of thing a reader registers " +
-        "as quality without noticing it at all.",
+        "At full strength a detailed image becomes the subject and text has to get out of " +
+        "its way. Bring it to a tenth and the image stops competing: it becomes a texture, " +
+        "the kind of thing a reader registers as quality without noticing it at all.",
 
         "The number that matters is contrast, not taste. Body copy needs 4.5:1 against the " +
         "lightest place the background reaches, and a photograph reaches much lighter in " +
