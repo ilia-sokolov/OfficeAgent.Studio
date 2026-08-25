@@ -1,4 +1,3 @@
-using System.Globalization;
 using OfficeAgent.Abstractions;
 using OfficeAgent.Core;
 
@@ -45,15 +44,14 @@ public sealed class InvoiceComposer
         _connection = connection;
     }
 
-    public async Task<string> ComposeAsync(
-        InvoicePlanned invoice, string fileName, CancellationToken ct = default)
-    {
-        var created = await _client.CreateAsync(_connection, fileName, cancellationToken: ct);
-        if (!created.Committed)
-            throw new InvalidOperationException(
-                "create: " + string.Join("; ", created.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    public Task<string> ComposeAsync(
+        InvoicePlanned invoice, string fileName, CancellationToken ct = default) =>
+        ComposerSession.RunAsync(
+            _client, _connection, fileName, id => ComposeCreatedAsync(invoice, id, ct), ct);
 
-        var id = created.Document!.ItemId;
+    private async Task ComposeCreatedAsync(
+        InvoicePlanned invoice, string id, CancellationToken ct)
+    {
         var lines = new List<(string ParaId, string Role)>();
 
         // The letterhead goes into the paragraph a blank document already has, so the
@@ -114,11 +112,10 @@ public sealed class InvoiceComposer
                 }
             }, ct);
 
-        return id;
     }
 
     private static string Money(string currency, decimal amount) =>
-        currency + amount.ToString("N2", CultureInfo.InvariantCulture);
+        InvoiceCurrency.Format(currency, amount);
 
     private async Task AppendTableAsync(string id, InvoicePlanned invoice, CancellationToken ct)
     {
@@ -126,9 +123,9 @@ public sealed class InvoiceComposer
             .Select(l => (IReadOnlyList<string>)new[]
             {
                 l.Unit is { Length: > 0 } unit ? $"{l.Description} ({unit})" : l.Description,
-                l.Quantity.ToString("0.##", CultureInfo.InvariantCulture),
+                l.Quantity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
                 Money(invoice.Currency, l.UnitPrice),
-                Money(invoice.Currency, InvoiceMath.LineTotal(l))
+                Money(invoice.Currency, InvoiceMath.LineTotal(l, InvoiceCurrency.DecimalPlaces(invoice.Currency)))
             })
             .ToList();
 
@@ -275,23 +272,23 @@ public sealed class InvoiceComposer
         int? spaceBefore = null, int? spaceAfter = null, string? alignment = null,
         bool bold = false, bool italic = false, bool caps = false,
         string? border = null, string? borderEdges = null, string? list = null) => new()
-    {
-        Target = new TextSpanAnchor { ParaId = paraId, Expect = string.Empty },
-        FontFamily = font,
-        SizeHalfPoints = caps ? size - 2 : size,
-        Color = color,
-        Bold = bold ? true : null,
-        Italic = italic ? true : null,
-        Alignment = alignment,
-        SpacingBeforeTwips = spaceBefore,
-        SpacingAfterTwips = spaceAfter,
-        ListStyle = list,
-        ListLevel = list is null ? null : 0,
-        BorderStyle = border is null ? null : "single",
-        BorderColor = border,
-        BorderSizeEighths = border is null ? null : 8,
-        BorderEdges = borderEdges
-    };
+        {
+            Target = new TextSpanAnchor { ParaId = paraId, Expect = string.Empty },
+            FontFamily = font,
+            SizeHalfPoints = caps ? size - 2 : size,
+            Color = color,
+            Bold = bold ? true : null,
+            Italic = italic ? true : null,
+            Alignment = alignment,
+            SpacingBeforeTwips = spaceBefore,
+            SpacingAfterTwips = spaceAfter,
+            ListStyle = list,
+            ListLevel = list is null ? null : 0,
+            BorderStyle = border is null ? null : "single",
+            BorderColor = border,
+            BorderSizeEighths = border is null ? null : 8,
+            BorderEdges = borderEdges
+        };
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
@@ -341,7 +338,6 @@ public sealed class InvoiceComposer
             _connection, id, new DocumentPlan { Operations = operations }, cancellationToken: ct);
 
         if (!result.Committed)
-            throw new InvalidOperationException(
-                string.Join("; ", result.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+            throw ComposerSession.ReportFailure("apply invoice operations", result.Report);
     }
 }

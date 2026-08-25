@@ -29,15 +29,12 @@ public sealed class DeckComposer
         _connection = connection;
     }
 
-    public async Task<string> ComposeAsync(DeckPlan plan, string fileName, CancellationToken ct = default)
+    public Task<string> ComposeAsync(DeckPlan plan, string fileName, CancellationToken ct = default) =>
+        ComposerSession.RunAsync(
+            _client, _connection, fileName, id => ComposeCreatedAsync(plan, id, ct), ct);
+
+    private async Task ComposeCreatedAsync(DeckPlan plan, string id, CancellationToken ct)
     {
-        var created = await _client.CreateAsync(_connection, fileName, cancellationToken: ct);
-        if (!created.Committed)
-            throw new InvalidOperationException(
-                "create: " + string.Join("; ", created.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
-
-        var id = created.Document!.ItemId;
-
         // One insertSlide per plan slide. The blank deck already has slide 1, so the cover
         // reuses it and everything else is appended.
         var inserts = new List<PlanOperation>();
@@ -58,7 +55,6 @@ public sealed class DeckComposer
             new TransitionOp { Effect = "fade", DurationMs = 400 }
         }, ct);
 
-        return id;
     }
 
     /// <summary>
@@ -445,7 +441,6 @@ public sealed class DeckComposer
             _connection, id, new DocumentPlan { Operations = operations }, cancellationToken: ct);
 
         if (!result.Committed)
-            throw new InvalidOperationException(
-                string.Join("; ", result.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+            throw ComposerSession.ReportFailure("apply deck operations", result.Report);
     }
 }

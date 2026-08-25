@@ -20,11 +20,24 @@ public sealed class ClaudeCodeChatClient : IChatClient
 {
     private readonly string _executable;
     private readonly TimeSpan _timeout;
+    private readonly Action<Process>? _processStarted;
 
     public ClaudeCodeChatClient(string executable = "claude", TimeSpan? timeout = null)
+        : this(executable, timeout, processStarted: null)
     {
+    }
+
+    internal ClaudeCodeChatClient(
+        string executable, TimeSpan? timeout, Action<Process>? processStarted)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+            throw new ArgumentException("The model executable cannot be empty.", nameof(executable));
+        if (timeout is { } supplied && supplied <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "The model timeout must be positive.");
+
         _executable = executable;
         _timeout = timeout ?? TimeSpan.FromMinutes(5);
+        _processStarted = processStarted;
     }
 
     public ChatClientMetadata Metadata { get; } = new("claude-code");
@@ -119,49 +132,54 @@ public sealed class ClaudeCodeChatClient : IChatClient
         }
 
         using var _ = process;
+        _processStarted?.Invoke(process);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_timeout);
 
-        // The contract goes in the turn as well as the system prompt. --append-system-prompt
-        // appends to Claude Code's own interactive persona, which is built to ask a
-        // clarifying question when a brief is thin; an instruction in the turn itself is
-        // what actually wins that argument.
-        if (!string.IsNullOrWhiteSpace(system))
-            await process.StandardInput.WriteAsync(system + Environment.NewLine + Environment.NewLine);
-
-        await process.StandardInput.WriteAsync(prompt);
-        process.StandardInput.Close();
-
-        var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-
         try
         {
+            // The contract goes in the turn as well as the system prompt.
+            if (!string.IsNullOrWhiteSpace(system))
+                await process.StandardInput.WriteAsync(
+                    (system + Environment.NewLine + Environment.NewLine).AsMemory(), timeout.Token);
+
+            await process.StandardInput.WriteAsync(prompt.AsMemory(), timeout.Token);
+            process.StandardInput.Close();
+
+            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+
             await process.WaitForExitAsync(timeout.Token);
+
+            var text = await stdout;
+            if (process.ExitCode != 0)
+            {
+                var message = (await stderr).Trim();
+
+                // A CLI that is present but not usable - not signed in, out of quota, wrong
+                // version - exits non-zero without producing a reply. That is a setup problem
+                // and is worth naming as one rather than retrying it three times.
+                throw new ModelUnavailableException(
+                    $"'{_executable}' exited {process.ExitCode}" +
+                    (message.Length > 0 ? $": {message}" : " without a message."));
+            }
+
+            return text.Trim();
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            // Disposing the Process does not stop the child. Left alone it keeps running,
-            // holding a model call open, for every attempt.
+            // Disposing Process only releases the local handle; it does not terminate the
+            // CLI. Kill on both timeout and caller cancellation so Ctrl+C cannot leave a
+            // model call and its descendants running in the background.
             TryKill(process);
+            await WaitForExitAfterKillAsync(process);
+
+            if (cancellationToken.IsCancellationRequested)
+                cancellationToken.ThrowIfCancellationRequested();
+
             throw new ModelUnavailableException(
                 $"'{_executable}' did not answer within {_timeout.TotalMinutes:0.#} minutes.");
         }
-
-        var text = await stdout;
-        if (process.ExitCode != 0)
-        {
-            var message = (await stderr).Trim();
-
-            // A CLI that is present but not usable - not signed in, out of quota, wrong
-            // version - exits non-zero without producing a reply. That is a setup problem
-            // and is worth naming as one rather than retrying it three times.
-            throw new ModelUnavailableException(
-                $"'{_executable}' exited {process.ExitCode}" +
-                (message.Length > 0 ? $": {message}" : " without a message."));
-        }
-
-        return text.Trim();
     }
 
     private static void TryKill(Process process)
@@ -173,6 +191,18 @@ public sealed class ClaudeCodeChatClient : IChatClient
         catch (Exception)
         {
             // Already gone, or not ours to kill. Either way there is nothing useful to do.
+        }
+    }
+
+    private static async Task WaitForExitAfterKillAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited) await process.WaitForExitAsync(CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // The process was already reaped or the platform cannot wait on it any longer.
         }
     }
 

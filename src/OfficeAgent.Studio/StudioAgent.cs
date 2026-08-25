@@ -95,7 +95,7 @@ public sealed class StudioAgent
           "from": { "name": "…", "lines": ["…"] },
           "to":   { "name": "…", "lines": ["…"] },
           "invoiceNumber": "…", "issued": "…", "due": "…",
-          "currency": "£",
+          "currency": "GBP",
           "lines": [ { "description": "…", "quantity": 1, "unit": "…", "unitPrice": 0 } ],
           "taxRatePercent": 20, "taxLabel": "VAT",
           "terms": ["…"], "notes": "…"
@@ -106,9 +106,9 @@ public sealed class StudioAgent
           only; the caller multiplies and sums. Any total you write is discarded.
         - 3 to 6 line items. A description says what was delivered, not what it cost.
         - from.lines and to.lines are address and contact lines, 2 to 4 each.
-        - currency follows the billing parties, not the default: a Dutch or German client is
-          invoiced in "€", a UK one in "£", a US one in "$". Getting this wrong is the one
-          error on an invoice that a reader treats as disqualifying.
+        - currency is an ISO 4217 code and follows the billing parties: a Dutch or German
+          client is invoiced in "EUR", a UK one in "GBP", a US one in "USD". Getting this
+          wrong is the one error on an invoice that a reader treats as disqualifying.
         - invoiceNumber looks like a real reference, e.g. "INV-2026-0184".
         - issued and due are written dates, e.g. "14 August 2026". due is after issued.
         - terms are 2 or 3 short lines: payment window, bank details, late-payment terms.
@@ -193,22 +193,19 @@ public sealed class StudioAgent
         Exception? last = null;
         for (var attempt = 1; attempt <= Attempts; attempt++)
         {
+            string? reply = null;
             try
             {
                 var response = await agent.RunAsync(prompt, cancellationToken: ct);
-                var json = ExtractJson(response.Text);
+                reply = response.Text;
+                var json = ExtractJson(reply);
 
                 var plan = JsonSerializer.Deserialize<T>(json, Json)
                     ?? throw new InvalidOperationException($"The model returned no usable {typeof(T).Name}.");
 
-                // `required` gets a property past the deserialiser; it does not stop the
-                // model sending an empty array. Checking here means a thin plan costs
-                // another attempt rather than an IndexOutOfRangeException three frames
-                // down inside a composer.
-                if (Deficiency(plan) is { } deficiency)
-                    throw new InvalidOperationException(deficiency);
-
-                return plan;
+                // Deserialization checks types; this boundary checks semantics, canonicalizes
+                // discriminators and refuses explicit nulls before a composer creates a file.
+                return PlanValidator.NormalizeAndValidate(plan);
             }
             catch (Exception error) when (error is JsonException or InvalidOperationException)
             {
@@ -221,49 +218,18 @@ public sealed class StudioAgent
                 // why OperationCanceledException is deliberately not caught here.
                 last = error;
                 Console.Error.WriteLine(
-                    $"  attempt {attempt} of {Attempts} did not return usable JSON: {error.Message}");
+                    $"  attempt {attempt} of {Attempts} did not return a usable plan: {error.Message}");
+                if (!string.IsNullOrWhiteSpace(reply))
+                    Console.Error.WriteLine($"  response excerpt: {Excerpt(reply)}");
             }
         }
 
         throw new StudioException(
             $"The model did not return a usable {typeof(T).Name} in {Attempts} attempts.",
-            "The last reply is quoted above. This is the model's output, not your setup - " +
-            "the same brief usually succeeds on a retry.",
+            "The response was malformed or did not satisfy the documented plan contract. " +
+            "The same brief usually succeeds on a retry.",
             last);
     }
-
-    /// <summary>
-    /// What is missing from an otherwise well-formed plan, or null when it is usable.
-    /// </summary>
-    /// <remarks>
-    /// Only the emptiness a composer would crash on, and the unknown role names it would
-    /// silently mis-style. Everything else the model gets wrong - five bullets where the
-    /// instructions asked for four - is absorbed by the layout on purpose.
-    /// </remarks>
-    private static string? Deficiency<T>(T plan) => plan switch
-    {
-        DeckPlan deck when deck.Slides is null or { Length: 0 } =>
-            "The deck plan has no slides.",
-        DeckPlan deck when Unknown(deck.Slides.Select(s => s.Kind), SlideKinds) is { } kind =>
-            $"The deck plan uses an unknown slide role '{kind}'. Expected one of: {string.Join(", ", SlideKinds)}.",
-
-        DocumentPlanned document when document.Blocks is null or { Length: 0 } =>
-            "The document plan has no blocks.",
-
-        ManualPlanned manual when manual.Sections is null or { Length: 0 } =>
-            "The manual plan has no sections.",
-
-        InvoicePlanned invoice when invoice.Lines is null or { Length: 0 } =>
-            "The invoice plan has no line items.",
-
-        _ => null
-    };
-
-    private static readonly string[] SlideKinds =
-        { "cover", "section", "statement", "bullets", "stat", "table", "closing" };
-
-    private static string? Unknown(IEnumerable<string> used, string[] known) =>
-        used.FirstOrDefault(k => !known.Contains(k, StringComparer.OrdinalIgnoreCase));
 
     private static StudioException Explain(ModelUnavailableException error) => new(
         error.Message,
@@ -287,12 +253,59 @@ public sealed class StudioAgent
             if (start > 0 && end > start) text = text.Substring(start + 1, end - start - 1).Trim();
         }
 
-        var open = text.IndexOf('{');
-        var close = text.LastIndexOf('}');
-        if (open < 0 || close <= open)
-            throw new InvalidOperationException($"No JSON object in the model's reply: {reply}");
+        // Look for the first balanced object that is valid JSON. A first-'{' / last-'}'
+        // slice joins separate objects and braces in prose into one guaranteed parse error.
+        for (var open = text.IndexOf('{'); open >= 0; open = text.IndexOf('{', open + 1))
+        {
+            var close = BalancedObjectEnd(text, open);
+            if (close < 0) continue;
 
-        return text.Substring(open, close - open + 1);
+            var candidate = text.Substring(open, close - open + 1);
+            try
+            {
+                using var parsed = JsonDocument.Parse(candidate);
+                if (parsed.RootElement.ValueKind == JsonValueKind.Object) return candidate;
+            }
+            catch (JsonException)
+            {
+                // A brace in prose or a malformed object; keep looking for a later object.
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"No valid JSON object in the model's reply. Response excerpt: {Excerpt(reply)}");
+    }
+
+    private static int BalancedObjectEnd(string text, int open)
+    {
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+
+        for (var index = open; index < text.Length; index++)
+        {
+            var character = text[index];
+            if (inString)
+            {
+                if (escaped) escaped = false;
+                else if (character == '\\') escaped = true;
+                else if (character == '"') inString = false;
+                continue;
+            }
+
+            if (character == '"') inString = true;
+            else if (character == '{') depth++;
+            else if (character == '}' && --depth == 0) return index;
+        }
+
+        return -1;
+    }
+
+    private static string Excerpt(string reply)
+    {
+        const int maximum = 400;
+        var flat = reply.ReplaceLineEndings(" ").Trim();
+        return flat.Length <= maximum ? flat : flat[..maximum] + "…";
     }
 
     private static readonly JsonSerializerOptions Json = new()

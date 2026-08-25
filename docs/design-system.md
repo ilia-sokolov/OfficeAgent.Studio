@@ -101,4 +101,5 @@ Two things the suite does **not** do, which matter if you are relying on a green
   has to be added there by hand.
 - **It only measures colour.** Heading semantics, reading order, alt text and document
   language are all unaddressed — see the README's Limits. A green build is evidence about
-  contrast and about nothing else.
+  contrast, while the separate composition integration tests are evidence about Open XML
+  validity and key generated content. Neither is a visual or full accessibility audit.

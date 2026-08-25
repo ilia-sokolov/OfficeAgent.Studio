@@ -25,16 +25,14 @@ public sealed class DocumentComposer
         _connection = connection;
     }
 
-    public async Task<string> ComposeAsync(
-        DocumentPlanned plan, string fileName, string? client = null, CancellationToken ct = default)
+    public Task<string> ComposeAsync(
+        DocumentPlanned plan, string fileName, string? client = null, CancellationToken ct = default) =>
+        ComposerSession.RunAsync(
+            _client, _connection, fileName, id => ComposeCreatedAsync(plan, id, client, ct), ct);
+
+    private async Task ComposeCreatedAsync(
+        DocumentPlanned plan, string id, string? client, CancellationToken ct)
     {
-        var created = await _client.CreateAsync(_connection, fileName, cancellationToken: ct);
-        if (!created.Committed)
-            throw new InvalidOperationException(
-                "create: " + string.Join("; ", created.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
-
-        var id = created.Document!.ItemId;
-
         // Every paragraph is remembered by id and by the role it plays, as it is written.
         // Walking the finished document by position instead looks simpler and is wrong: a
         // table leaves a paragraph behind it, a bullets block writes several, and one such
@@ -75,15 +73,15 @@ public sealed class DocumentComposer
         await StyleAsync(id, lines, ct);
         await DressAsync(id, plan, client, ct);
 
-        await _client.CommitAsync(_connection, id, new DocumentPlan
+        var metadata = await _client.CommitAsync(_connection, id, new DocumentPlan
         {
             Operations = new PlanOperation[]
             {
                 new SetPropertyOp { Target = new NodeAnchor { Kind = "docProperty", Path = "core/title" }, Value = plan.Title }
             }
         }, cancellationToken: ct);
-
-        return id;
+        if (!metadata.Committed)
+            throw ComposerSession.ReportFailure("set document metadata", metadata.Report);
     }
 
     /// <summary>
@@ -392,7 +390,6 @@ public sealed class DocumentComposer
             _connection, id, new DocumentPlan { Operations = operations }, cancellationToken: ct);
 
         if (!result.Committed)
-            throw new InvalidOperationException(
-                string.Join("; ", result.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+            throw ComposerSession.ReportFailure("apply document operations", result.Report);
     }
 }

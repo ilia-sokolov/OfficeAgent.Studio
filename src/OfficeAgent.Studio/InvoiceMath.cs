@@ -26,8 +26,10 @@ public static class InvoiceMath
     /// fractional unit - which fractional quantities and hourly rates do routinely, and
     /// which a reader reads as an arithmetic error.
     /// </remarks>
-    public static decimal LineTotal(LineItemPlanned line) =>
-        decimal.Round(line.Quantity * line.UnitPrice, 2, MidpointRounding.AwayFromZero);
+    public static decimal LineTotal(LineItemPlanned line) => LineTotal(line, 2);
+
+    public static decimal LineTotal(LineItemPlanned line, int decimalPlaces) =>
+        decimal.Round(line.Quantity * line.UnitPrice, decimalPlaces, MidpointRounding.AwayFromZero);
 
     /// <summary>The tax rate actually applied: never negative, whatever the model said.</summary>
     /// <remarks>
@@ -38,11 +40,17 @@ public static class InvoiceMath
     public static decimal Rate(InvoicePlanned invoice) =>
         invoice.TaxRatePercent > 0 ? invoice.TaxRatePercent : 0m;
 
-    public static decimal Subtotal(InvoicePlanned invoice) =>
-        invoice.Lines is null ? 0m : invoice.Lines.Sum(LineTotal);
+    public static decimal Subtotal(InvoicePlanned invoice)
+    {
+        var decimalPlaces = InvoiceCurrency.DecimalPlaces(invoice.Currency);
+        return invoice.Lines is null ? 0m : invoice.Lines.Sum(line => LineTotal(line, decimalPlaces));
+    }
 
     public static decimal Tax(InvoicePlanned invoice) =>
-        decimal.Round(Subtotal(invoice) * (Rate(invoice) / 100m), 2, MidpointRounding.AwayFromZero);
+        decimal.Round(
+            Subtotal(invoice) * (Rate(invoice) / 100m),
+            InvoiceCurrency.DecimalPlaces(invoice.Currency),
+            MidpointRounding.AwayFromZero);
 
     public static decimal Total(InvoicePlanned invoice) => Subtotal(invoice) + Tax(invoice);
 

@@ -94,6 +94,28 @@ public class InvoiceMathTests
         Assert.Equal(0.15m, InvoiceMath.LineTotal(Line(1, 0.145m)));
     }
 
+    [Fact]
+    public void Currency_precision_controls_the_printed_arithmetic()
+    {
+        var yen = Invoice(taxPercent: 10m, Line(1, 100.5m));
+        yen = yen with { Currency = "JPY" };
+        Assert.Equal(101m, InvoiceMath.Subtotal(yen));
+        Assert.Equal(10m, InvoiceMath.Tax(yen));
+
+        var dinar = Invoice(taxPercent: 0m, Line(1, 1.2345m));
+        dinar = dinar with { Currency = "KWD" };
+        Assert.Equal(1.235m, InvoiceMath.Subtotal(dinar));
+    }
+
+    [Theory]
+    [InlineData("EUR", "€1,234.50")]
+    [InlineData("JPY", "¥1,235")]
+    [InlineData("KWD", "KWD 1,234.500")]
+    public void ISO_currency_codes_have_stable_display_rules(string currency, string expected)
+    {
+        Assert.Equal(expected, InvoiceCurrency.Format(currency, 1234.5m));
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private static LineItemPlanned Line(decimal quantity, decimal unitPrice) =>

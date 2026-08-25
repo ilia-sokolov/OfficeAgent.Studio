@@ -33,15 +33,14 @@ public sealed class ManualComposer
         _connection = connection;
     }
 
-    public async Task<string> ComposeAsync(
-        ManualPlanned manual, string fileName, CancellationToken ct = default)
-    {
-        var created = await _client.CreateAsync(_connection, fileName, cancellationToken: ct);
-        if (!created.Committed)
-            throw new InvalidOperationException(
-                "create: " + string.Join("; ", created.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    public Task<string> ComposeAsync(
+        ManualPlanned manual, string fileName, CancellationToken ct = default) =>
+        ComposerSession.RunAsync(
+            _client, _connection, fileName, id => ComposeCreatedAsync(manual, id, ct), ct);
 
-        var id = created.Document!.ItemId;
+    private async Task ComposeCreatedAsync(
+        ManualPlanned manual, string id, CancellationToken ct)
+    {
         var lines = new List<Line>();
 
         lines.Add(new Line(await FillFirstAsync(id, manual.Title, ct), "title"));
@@ -80,7 +79,6 @@ public sealed class ManualComposer
         }
 
         await StyleAsync(id, lines, manual, ct);
-        return id;
     }
 
     /// <summary>One written paragraph and everything the styling pass needs to know about it.</summary>
@@ -174,24 +172,24 @@ public sealed class ManualComposer
         int? spaceBefore = null, int? spaceAfter = null, int? indentLeft = null,
         bool bold = false, string? border = null, string? borderEdges = null,
         string? list = null, int listLevel = 0, int listId = 0) => new()
-    {
-        Target = new TextSpanAnchor { ParaId = line.ParaId, Expect = string.Empty },
-        FontFamily = font,
-        SizeHalfPoints = size,
-        Color = color,
-        Bold = bold ? true : null,
-        SpacingBeforeTwips = spaceBefore,
-        SpacingAfterTwips = spaceAfter,
-        IndentLeftTwips = indentLeft,
-        IndentRightTwips = _design.DocumentMeasureInset,
-        ListStyle = list,
-        ListLevel = list is null ? null : listLevel,
-        ListId = list is null ? null : listId,
-        BorderStyle = border is null ? null : "single",
-        BorderColor = border,
-        BorderSizeEighths = border is null ? null : 12,
-        BorderEdges = borderEdges
-    };
+        {
+            Target = new TextSpanAnchor { ParaId = line.ParaId, Expect = string.Empty },
+            FontFamily = font,
+            SizeHalfPoints = size,
+            Color = color,
+            Bold = bold ? true : null,
+            SpacingBeforeTwips = spaceBefore,
+            SpacingAfterTwips = spaceAfter,
+            IndentLeftTwips = indentLeft,
+            IndentRightTwips = _design.DocumentMeasureInset,
+            ListStyle = list,
+            ListLevel = list is null ? null : listLevel,
+            ListId = list is null ? null : listId,
+            BorderStyle = border is null ? null : "single",
+            BorderColor = border,
+            BorderSizeEighths = border is null ? null : 12,
+            BorderEdges = borderEdges
+        };
 
     /// <summary><c>FormatOp</c> is a class, so there is no <c>with</c> to reach for.</summary>
     private static FormatOp WithBreak(FormatOp op) => new()
@@ -263,7 +261,6 @@ public sealed class ManualComposer
             _connection, id, new DocumentPlan { Operations = operations }, cancellationToken: ct);
 
         if (!result.Committed)
-            throw new InvalidOperationException(
-                string.Join("; ", result.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+            throw ComposerSession.ReportFailure("apply manual operations", result.Report);
     }
 }

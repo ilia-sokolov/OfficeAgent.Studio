@@ -38,14 +38,12 @@ public sealed class BackdropSample
     /// One slide per strength, each with the same photograph behind the same two lines of
     /// text, plus a control slide with no background at all.
     /// </summary>
-    public async Task<string> ComposeDeckAsync(string fileName, CancellationToken ct = default)
-    {
-        var created = await _client.CreateAsync(_connection, fileName, cancellationToken: ct);
-        if (!created.Committed)
-            throw new InvalidOperationException(
-                "create: " + string.Join("; ", created.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    public Task<string> ComposeDeckAsync(string fileName, CancellationToken ct = default) =>
+        ComposerSession.RunAsync(
+            _client, _connection, fileName, id => ComposeDeckCreatedAsync(id, ct), ct);
 
-        var id = created.Document!.ItemId;
+    private async Task ComposeDeckCreatedAsync(string id, CancellationToken ct)
+    {
         var photograph = Convert.ToBase64String(
             Backdrop.Photograph(_design.Ink, _design.Accent, width: 1280, height: 720));
 
@@ -133,21 +131,18 @@ public sealed class BackdropSample
             await AddSampleTextAsync(id, slideId, "Light text set over the image", 420, _design.Reverse, ct);
         }
 
-        return id;
     }
 
     /// <summary>
-    /// The same comparison as a document: one page per strength, so the effect can be judged
-    /// at reading size rather than across a room.
+    /// The same comparison as a document: a full-strength cover and a low-opacity body page,
+    /// so the two strengths that matter can be judged at reading size rather than across a room.
     /// </summary>
-    public async Task<string> ComposeDocumentAsync(string fileName, CancellationToken ct = default)
-    {
-        var created = await _client.CreateAsync(_connection, fileName, cancellationToken: ct);
-        if (!created.Committed)
-            throw new InvalidOperationException(
-                "create: " + string.Join("; ", created.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+    public Task<string> ComposeDocumentAsync(string fileName, CancellationToken ct = default) =>
+        ComposerSession.RunAsync(
+            _client, _connection, fileName, id => ComposeDocumentCreatedAsync(id, ct), ct);
 
-        var id = created.Document!.ItemId;
+    private async Task ComposeDocumentCreatedAsync(string id, CancellationToken ct)
+    {
 
         // A page background belongs to the section, so a document cannot show six strengths
         // at once the way a deck can. It shows the two that matter: the cover at full
@@ -202,7 +197,6 @@ public sealed class BackdropSample
             }
         }, ct);
 
-        return id;
     }
 
     private static readonly string[] Body =
@@ -312,7 +306,6 @@ public sealed class BackdropSample
             _connection, id, new DocumentPlan { Operations = operations }, cancellationToken: ct);
 
         if (!result.Committed)
-            throw new InvalidOperationException(
-                string.Join("; ", result.Report.Errors.Select(e => $"{e.Code}: {e.Message}")));
+            throw ComposerSession.ReportFailure("apply backdrop sample operations", result.Report);
     }
 }

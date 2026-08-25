@@ -31,9 +31,9 @@ public sealed record InvoicePlanned
     [JsonPropertyName("due")]
     public required string Due { get; init; }
 
-    /// <summary>The currency symbol or code, used verbatim in front of every amount.</summary>
+    /// <summary>The ISO 4217 currency code used to format every amount.</summary>
     [JsonPropertyName("currency")]
-    public string Currency { get; init; } = "£";
+    public string Currency { get; init; } = "GBP";
 
     [JsonPropertyName("lines")]
     public LineItemPlanned[] Lines { get; init; } = Array.Empty<LineItemPlanned>();

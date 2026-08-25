@@ -31,8 +31,10 @@ the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
 
 ![Two pages of a generated Word report: a dark cover page, and a body page with a ruled table, a running head and a page number](docs/images/report.png)
 
-**Start with `backdrop`.** It needs no model, no network and no sign-in, so if it produces
-files your build is good and anything that fails afterwards is the model, not the setup.
+**Start with `backdrop`.** It needs no model, no network and no sign-in. If it produces
+files, the OfficeAgent document-generation stack and output directory work. A later command
+can still fail in model setup, plan validation or content-specific composition, and reports
+which stage failed.
 
 ```bash
 dotnet run --project src/OfficeAgent.Studio -- backdrop
@@ -64,23 +66,56 @@ this but not run it, and will need the .NET 8 runtime as well.
 
 **A model.** By default the sample shells out to the Claude Code CLI, so if `claude` is
 installed and signed in there is nothing to configure. Claude Code needs a paid Claude plan.
-A run makes one model call per file, and up to three if the model returns unusable JSON. To
-use something else, replace one line in `Program.cs`:
+A run makes one model call per file, and up to three if the model returns unusable JSON or a
+plan that violates the documented shape. `StudioAgent` accepts any `IChatClient`; the sample
+wires Claude in `Program.cs`.
 
 ```csharp
-// Program.cs — the only line that names a model
 var agent = new StudioAgent(new ClaudeCodeChatClient());
-
-// for example
-var agent = new StudioAgent(
-    new AzureOpenAIClient(endpoint, credential).GetChatClient("gpt-4o").AsIChatClient());
 ```
 
-Two files name Claude: `ClaudeCodeChatClient.cs`, and the one line in `Program.cs` above.
+For example, Azure OpenAI needs three optional packages that are deliberately not part of
+the default Claude-based restore:
+
+```bash
+dotnet add src/OfficeAgent.Studio package Azure.AI.OpenAI
+dotnet add src/OfficeAgent.Studio package Azure.Identity
+dotnet add src/OfficeAgent.Studio package Microsoft.Extensions.AI.OpenAI --prerelease
+```
+
+Then add `using Azure.AI.OpenAI;`, `using Azure.Identity;` and
+`using Microsoft.Extensions.AI;` to `Program.cs`, and replace the agent construction with:
+
+```csharp
+var endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT")
+    ?? throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT is required.");
+var deployment = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT")
+    ?? throw new InvalidOperationException("AZURE_OPENAI_DEPLOYMENT is required.");
+
+var agent = new StudioAgent(
+    new AzureOpenAIClient(new Uri(endpoint), new DefaultAzureCredential())
+        .GetChatClient(deployment)
+        .AsIChatClient());
+```
+
+`DefaultAzureCredential` uses your signed-in Azure CLI/Visual Studio identity or managed
+identity. That identity needs access to the deployment. See Microsoft's
+[.NET model quickstart](https://learn.microsoft.com/dotnet/ai/quickstarts/prompt-model).
+
+Two files name Claude: `ClaudeCodeChatClient.cs`, and the construction in `Program.cs`.
 Nothing else in the project knows which model it is talking to.
 
-**OfficeAgent.NET 0.6.0**, restored from NuGet. If you have the OfficeAgent.NET repository
-cloned beside this one, the build uses that instead and says so on its first build line.
+**OfficeAgent.NET 0.6.0**, restored from NuGet. NuGet remains the default even when an
+OfficeAgent.NET checkout happens to be nearby, so builds do not change with directory layout.
+To test deliberately against a sibling checkout, opt in:
+
+```bash
+dotnet test -p:UseOfficeAgentSource=true
+```
+
+If the checkout is elsewhere, also pass
+`-p:OfficeAgentSource=/absolute/path/to/OfficeAgent.NET/src`. The build prints which source
+it selected.
 
 You do not need Microsoft Office to generate files — only to open them.
 
@@ -114,8 +149,9 @@ OfficeAgent.NET does not have yet.
 - **Content still needs review.** A generated invoice once charged VAT *and* stated the VAT
   was reverse-charged — a domain error no layout check catches. Arithmetic is done in C#;
   tax treatment and factual claims are not.
-- **The model does not always follow its own rules.** Occasionally a slide arrives with five
-  bullets against an instruction saying four.
+- **The model does not always follow its own rules.** Plans are validated before a file is
+  created and retried up to three times. A run stops cleanly if all three violate the
+  contract; it never silently composes a five-bullet slide or malformed table.
 - **`both` plans the deck and the report independently.** They share a design system, not a
   set of facts. Do not expect the numbers to agree.
 
@@ -163,13 +199,16 @@ Brief ──▶ StudioAgent ──▶ JSON plan ──▶ Composer ──▶ Off
 src/OfficeAgent.Studio/
   Program.cs               CLI and dependency injection
   StudioAgent.cs           Four agents and their instructions
+  PlanValidator.cs         model plan normalization and validation
   Brief.cs, Templates.cs   The JSON shapes the model returns
   ClaudeCodeChatClient.cs  IChatClient over the Claude Code CLI
+  Composition.cs           staged composition and atomic publication
   DesignSystem.cs          Every colour, face, size and measure
   Backdrop.cs              Draws backgrounds as PNGs, in code
   DeckComposer.cs          deck plan     → .pptx
   DocumentComposer.cs      document plan → .docx
   InvoiceComposer.cs       invoice plan  → .docx
+  InvoiceCurrency.cs       ISO currency display and decimal precision
   ManualComposer.cs        manual plan   → .docx
   BackdropSample.cs        the opacity demonstration
 ```
@@ -187,14 +226,19 @@ A deck is built from seven roles, and the role decides the whole appearance of t
 | `closing` | The ask |
 
 Adding a role means editing the instructions in `StudioAgent.cs`, the shape in `Brief.cs`,
-and three places in `DeckComposer.cs` — `LayoutFor`, `IsCentred` and the styling switch. If
-the role introduces a new text-on-ground combination, add it to `ContrastTests.Pairings()`
-too; that list does not maintain itself.
+the contract in `PlanValidator.cs`, and three places in `DeckComposer.cs` — `LayoutFor`,
+`IsCentred` and the styling switch. If the role introduces a new text-on-ground combination,
+add it to `ContrastTests.Pairings()` too; that list does not maintain itself.
 
 A whole new document type is more: a plan record in `Templates.cs`, a fifth agent in
-`StudioAgent.cs`, a composer of two to four hundred lines, and a branch in `Program.cs`. The
-four composers share no base class, so `FillFirstAsync`, `AppendAsync` and `ApplyAsync` are
-duplicated in each — worth extracting before you write a fifth.
+`StudioAgent.cs`, a validator branch, a composer of two to four hundred lines, and a branch
+in `Program.cs`. The four composers share no base class, so `FillFirstAsync`, `AppendAsync`
+and `ApplyAsync` are duplicated in each — worth extracting before you write a fifth.
+
+Every composer does share `ComposerSession`, which removes failed provider registrations.
+`OutputTransaction` composes under a private temporary name and publishes the requested
+filename only after all operations succeed. Interrupted or rejected runs do not leave a
+success-looking partial document.
 
 ## Branding
 
@@ -260,20 +304,23 @@ the palette carries two greys and three accents.
 dotnet test
 ```
 
-46 tests, and it is worth knowing what they do and do not cover.
+61 tests, and it is worth knowing what they cover.
 
 - **Contrast**, for every registered brand: the text-and-ground pairings listed in
   `ContrastTests.Pairings()`. That list is maintained by hand — adding a colour to a
   composer does not add a case.
 - **Invoice arithmetic**: that the printed lines add up to the printed subtotal, that a
-  negative tax rate is ignored rather than silently subtracted, and that halves round the
-  way a reader expects.
+  negative tax rate is ignored rather than silently subtracted, that halves round the way a
+  reader expects, and that zero- and three-decimal currencies stay internally consistent.
+- **Model-plan validation**: canonical roles, null nested collections, table shape, invoice
+  semantics, manual numbering input and JSON extraction.
+- **Process cancellation**: cancelling a model request terminates the CLI process tree.
+- **Generated output**: fixed plans compose every `.pptx` and `.docx` type, publish without
+  temporary files, open through the Open XML SDK, pass the Office 2019 schema validator and
+  retain key semantic content.
 
-**Nothing here opens a generated file.** No test checks that the `.pptx` and `.docx` this
-sample produces are schema-valid, or that anything landed where it was meant to.
-OfficeAgent.NET validates against the Open XML schema in *its own* test suite, which is a
-different thing from validating your output at run time. If you build on this, output tests
-are the first thing to add.
+The integration suite does not judge visual quality or run a paid model. Those remain human
+review and optional end-to-end checks; deterministic output validity is part of the build.
 
 ## Contributing and licence
 

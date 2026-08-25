@@ -13,16 +13,6 @@
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.9.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
   </ItemGroup>
-
-  <!--
-    OfficeAgent comes from a sibling checkout when there is one, and from NuGet otherwise.
-
-    The path is anchored to this file rather than to the working directory, because a
-    relative path that depends on where you happened to run dotnet from breaks the moment
-    the repository is cloned one level deeper - and it breaks silently, since a
-    ProjectReference inside a failed Exists() condition simply disappears and leaves you
-    reading fifty "type or namespace does not exist" errors instead of one useful one.
-  -->
   <PropertyGroup>
     <!--
       Candidate locations, in order. The first is the ordinary case: OfficeAgent.NET cloned
@@ -34,13 +24,17 @@
     <_OfficeAgentNestedBoth>$(MSBuildThisFileDirectory)..\..\..\..\OfficeAgent.NET\OfficeAgent.NET\src</_OfficeAgentNestedBoth>
     <_OfficeAgentNestedSelf>$(MSBuildThisFileDirectory)..\..\..\..\OfficeAgent.NET\src</_OfficeAgentNestedSelf>
 
-    <OfficeAgentSource Condition="Exists('$(_OfficeAgentSibling)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentSibling)</OfficeAgentSource>
-    <OfficeAgentSource Condition="'$(OfficeAgentSource)' == '' And Exists('$(_OfficeAgentNestedBoth)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentNestedBoth)</OfficeAgentSource>
-    <OfficeAgentSource Condition="'$(OfficeAgentSource)' == '' And Exists('$(_OfficeAgentNestedSelf)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentNestedSelf)</OfficeAgentSource>
-
-    <UseOfficeAgentSource Condition="'$(OfficeAgentSource)' != ''">true</UseOfficeAgentSource>
+    <UseOfficeAgentSource Condition="'$(UseOfficeAgentSource)' == ''">false</UseOfficeAgentSource>
+    <OfficeAgentSource Condition="'$(UseOfficeAgentSource)' == 'true' And '$(OfficeAgentSource)' == '' And Exists('$(_OfficeAgentSibling)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentSibling)</OfficeAgentSource>
+    <OfficeAgentSource Condition="'$(UseOfficeAgentSource)' == 'true' And '$(OfficeAgentSource)' == '' And Exists('$(_OfficeAgentNestedBoth)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentNestedBoth)</OfficeAgentSource>
+    <OfficeAgentSource Condition="'$(UseOfficeAgentSource)' == 'true' And '$(OfficeAgentSource)' == '' And Exists('$(_OfficeAgentNestedSelf)\OfficeAgent.Core\OfficeAgent.Core.csproj')">$(_OfficeAgentNestedSelf)</OfficeAgentSource>
     <OfficeAgentVersion>0.6.0</OfficeAgentVersion>
   </PropertyGroup>
+
+  <Target Name="ValidateOfficeAgentSource" BeforeTargets="PrepareForBuild"
+          Condition="'$(UseOfficeAgentSource)' == 'true' And !Exists('$(OfficeAgentSource)\OfficeAgent.Core\OfficeAgent.Core.csproj')">
+    <Error Text="UseOfficeAgentSource=true, but OfficeAgentSource does not point to an OfficeAgent.NET src directory. Pass -p:OfficeAgentSource=&lt;path-to-src&gt;." />
+  </Target>
 
   <ItemGroup Condition="'$(UseOfficeAgentSource)' == 'true'">
     <ProjectReference Include="$(OfficeAgentSource)\OfficeAgent.Core\OfficeAgent.Core.csproj" />
@@ -60,5 +54,9 @@
     <Message Importance="high" Condition="'$(UseOfficeAgentSource)' != 'true'"
              Text="OfficeAgent: building against NuGet packages $(OfficeAgentVersion)" />
   </Target>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OfficeAgent.Studio.Tests" />
+  </ItemGroup>
 
 </Project>

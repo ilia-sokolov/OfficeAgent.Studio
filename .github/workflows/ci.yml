@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  nuget:
+    name: NuGet / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Verify formatting
+        if: runner.os == 'Linux'
+        run: dotnet format OfficeAgent.Studio.slnx --verify-no-changes --verbosity:minimal
+      - run: dotnet test OfficeAgent.Studio.slnx --nologo --verbosity:minimal -warnaserror
+
+  source:
+    name: OfficeAgent.NET source / ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ilia-sokolov/OfficeAgent.NET
+          ref: v0.6.0
+          path: OfficeAgent.NET
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Test against the source tag
+        shell: bash
+        run: >-
+          dotnet test OfficeAgent.Studio.slnx
+          --nologo --verbosity:minimal
+          -p:UseOfficeAgentSource=true
+          -p:OfficeAgentSource="$GITHUB_WORKSPACE/OfficeAgent.NET/src"
