@@ -111,6 +111,55 @@ internal static class TestPlans
         }).ToArray()
     };
 
+    internal static DesignSystemPlan DesignSystem() => new()
+    {
+        SchemaVersion = 1,
+        Name = "Northwind Signal",
+        Rationale = "A dark editorial foundation gives the work authority. A restrained burnt accent adds warmth without weakening data clarity.",
+        Wordmark = "northwind",
+        EyebrowUppercase = true,
+        Palette = new DesignPalettePlan
+        {
+            Ink = "12161C",
+            InkDeep = "23282F",
+            Paper = "FFFFFF",
+            Wash = "F4F1ED",
+            WashDeep = "EAE4DA",
+            Body = "2B3138",
+            Muted = "676C71",
+            MutedReverse = "A8AEB5",
+            Accent = "C8632B",
+            AccentText = "A34E1F",
+            AccentReverse = "E8834A",
+            Reverse = "FFFFFF"
+        },
+        Typography = new DesignTypographyPlan
+        {
+            DisplayFont = "Georgia",
+            TextFont = "Calibri",
+            DisplaySize = 108,
+            TitleSize = 72,
+            SubtitleSize = 40,
+            BodySize = 28,
+            CaptionSize = 20,
+            StatSize = 96,
+            DocumentTitleSize = 72,
+            DocumentHeadingSize = 40,
+            DocumentSubheadingSize = 24,
+            DocumentBodySize = 21,
+            DocumentQuoteSize = 28,
+            DocumentCaptionSize = 19
+        },
+        Geometry = new DesignGeometryPlan
+        {
+            Margin = 88,
+            DocumentMeasureInset = 2200,
+            DocumentIndent = 340,
+            RuleHeight = 6
+        },
+        Backdrop = new DesignBackdropPlan { PageOpacity = 0.55, CoverLift = 0.10 }
+    };
+
     private const string Body =
         "The quarter remains close to plan and the identified gap has two bounded causes. " +
         "Named owners have accepted each recovery action. The board can therefore focus on execution.";

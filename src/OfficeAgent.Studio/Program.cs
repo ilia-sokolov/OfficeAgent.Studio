@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.AI;
 using OfficeAgent.Core;
 using OfficeAgent.Core.DocumentProviders;
 using OfficeAgent.PowerPoint;
@@ -10,9 +11,18 @@ return await StudioProgram.RunAsync(args);
 internal static class StudioProgram
 {
     private static readonly string[] KnownCommands =
-        { "deck", "doc", "document", "both", "invoice", "manual", "backdrop", "background" };
+        {
+            "deck", "doc", "document", "both", "invoice", "manual", "backdrop", "background",
+            "design-system", "brand"
+        };
 
-    internal static async Task<int> RunAsync(string[] args)
+    internal static Task<int> RunAsync(string[] args) =>
+        RunAsync(args, ModelClientFactory.CreateFromEnvironment, Environment.GetEnvironmentVariable);
+
+    internal static async Task<int> RunAsync(
+        string[] args,
+        Func<IChatClient> modelClientFactory,
+        Func<string, string?> setting)
     {
         var kind = args.Length > 0 ? args[0].ToLowerInvariant() : "both";
         if (kind is "-h" or "--help" or "help" || !KnownCommands.Contains(kind))
@@ -35,10 +45,13 @@ internal static class StudioProgram
         {
             var request = args.Length > 1
                 ? string.Join(' ', args.Skip(1))
-                : "A quarterly business review for the board: how the year is tracking against plan, "
-                  + "where the two misses are, what we are doing about them, and what we need decided.";
+                : kind is "design-system" or "brand"
+                    ? "A restrained, confident identity for a European technology consultancy: " +
+                      "precise, modern and credible with senior business readers."
+                    : "A quarterly business review for the board: how the year is tracking against plan, "
+                      + "where the two misses are, what we are doing about them, and what we need decided.";
 
-            var configuredOutput = Environment.GetEnvironmentVariable("OFFICEAGENT_STUDIO_OUTPUT");
+            var configuredOutput = setting("OFFICEAGENT_STUDIO_OUTPUT");
             var output = Path.GetFullPath(
                 string.IsNullOrWhiteSpace(configuredOutput) ? "output" : configuredOutput);
             Directory.CreateDirectory(output);
@@ -55,14 +68,16 @@ internal static class StudioProgram
                 .BuildServiceProvider();
 
             var client = services.GetRequiredService<OfficeAgentClient>();
-            var design = DesignSystem.ByName(Environment.GetEnvironmentVariable("OFFICEAGENT_STUDIO_BRAND"));
             using var modelClient = kind is "backdrop" or "background"
                 ? null
-                : ModelClientFactory.CreateFromEnvironment();
+                : modelClientFactory();
             var agent = modelClient is null ? null : new StudioAgent(modelClient);
             var publisher = new OutputTransaction(client, output);
+            var design = kind is "design-system" or "brand"
+                ? null
+                : DesignSystemFiles.Resolve(setting);
 
-            var configuredClient = Environment.GetEnvironmentVariable("OFFICEAGENT_STUDIO_CLIENT");
+            var configuredClient = setting("OFFICEAGENT_STUDIO_CLIENT");
             var brief = new Brief
             {
                 Request = request,
@@ -72,6 +87,29 @@ internal static class StudioProgram
 
             var stamp = OutputNames.NewStamp();
             var ct = cancellation.Token;
+
+            if (kind is "design-system" or "brand")
+            {
+                Console.WriteLine("Designing the system…");
+                var plan = await agent!.PlanDesignSystemAsync(brief, ct);
+                Console.WriteLine(
+                    $"  {plan.Name}: {plan.Typography.DisplayFont} / {plan.Typography.TextFont}, " +
+                    $"accent #{plan.Palette.Accent}");
+
+                var artifactName = $"design-system-{stamp}.json";
+                var artifactPath = await DesignSystemFiles.SaveAsync(plan, output, artifactName, ct);
+                Console.WriteLine($"  → {artifactPath}");
+                var generated = DesignSystemFiles.Load(artifactPath);
+
+                Console.WriteLine("Composing the design-system previews…");
+                await ComposeBackdropAsync(
+                    client, publisher, generated, output, $"design-system-preview-{stamp}", ct);
+                Console.WriteLine();
+                Console.WriteLine("Reuse it with:");
+                Console.WriteLine($"  $env:OFFICEAGENT_STUDIO_BRAND_FILE = \"{artifactPath}\"");
+                Console.WriteLine("Done.");
+                return 0;
+            }
 
             if (kind is "deck" or "both")
             {
@@ -83,7 +121,7 @@ internal static class StudioProgram
                 var name = $"deck-{stamp}.pptx";
                 await publisher.ComposeAsync(
                     name,
-                    (temporary, token) => new DeckComposer(client, design).ComposeAsync(plan, temporary, token),
+                    (temporary, token) => new DeckComposer(client, design!).ComposeAsync(plan, temporary, token),
                     ct);
                 Console.WriteLine($"  → {Path.Combine(output, name)}");
             }
@@ -100,7 +138,7 @@ internal static class StudioProgram
                 await publisher.ComposeAsync(
                     name,
                     (temporary, token) =>
-                        new DocumentComposer(client, design).ComposeAsync(plan, temporary, brief.Client, token),
+                        new DocumentComposer(client, design!).ComposeAsync(plan, temporary, brief.Client, token),
                     ct);
                 Console.WriteLine($"  → {Path.Combine(output, name)}");
             }
@@ -115,7 +153,7 @@ internal static class StudioProgram
                 var name = $"invoice-{stamp}.docx";
                 await publisher.ComposeAsync(
                     name,
-                    (temporary, token) => new InvoiceComposer(client, design).ComposeAsync(plan, temporary, token),
+                    (temporary, token) => new InvoiceComposer(client, design!).ComposeAsync(plan, temporary, token),
                     ct);
                 Console.WriteLine($"  → {Path.Combine(output, name)}");
             }
@@ -133,7 +171,7 @@ internal static class StudioProgram
                 var name = $"manual-{stamp}.docx";
                 await publisher.ComposeAsync(
                     name,
-                    (temporary, token) => new ManualComposer(client, design).ComposeAsync(plan, temporary, token),
+                    (temporary, token) => new ManualComposer(client, design!).ComposeAsync(plan, temporary, token),
                     ct);
                 Console.WriteLine($"  → {Path.Combine(output, name)}");
             }
@@ -141,21 +179,7 @@ internal static class StudioProgram
             if (kind is "backdrop" or "background")
             {
                 Console.WriteLine("Composing the background samples…");
-                var sample = new BackdropSample(client, design);
-
-                var deckName = $"backgrounds-{stamp}.pptx";
-                await publisher.ComposeAsync(
-                    deckName,
-                    (temporary, token) => sample.ComposeDeckAsync(temporary, token),
-                    ct);
-                Console.WriteLine($"  → {Path.Combine(output, deckName)}");
-
-                var documentName = $"backgrounds-{stamp}.docx";
-                await publisher.ComposeAsync(
-                    documentName,
-                    (temporary, token) => sample.ComposeDocumentAsync(temporary, token),
-                    ct);
-                Console.WriteLine($"  → {Path.Combine(output, documentName)}");
+                await ComposeBackdropAsync(client, publisher, design!, output, $"backgrounds-{stamp}", ct);
             }
 
             Console.WriteLine("Done.");
@@ -206,6 +230,31 @@ internal static class StudioProgram
         if (!string.IsNullOrWhiteSpace(hint)) Console.Error.WriteLine(hint);
     }
 
+    private static async Task ComposeBackdropAsync(
+        OfficeAgentClient client,
+        OutputTransaction publisher,
+        DesignSystem design,
+        string output,
+        string baseName,
+        CancellationToken cancellationToken)
+    {
+        var sample = new BackdropSample(client, design);
+
+        var deckName = $"{baseName}.pptx";
+        await publisher.ComposeAsync(
+            deckName,
+            (temporary, token) => sample.ComposeDeckAsync(temporary, token),
+            cancellationToken);
+        Console.WriteLine($"  → {Path.Combine(output, deckName)}");
+
+        var documentName = $"{baseName}.docx";
+        await publisher.ComposeAsync(
+            documentName,
+            (temporary, token) => sample.ComposeDocumentAsync(temporary, token),
+            cancellationToken);
+        Console.WriteLine($"  → {Path.Combine(output, documentName)}");
+    }
+
     private static void PrintHelp() => Console.WriteLine("""
         OfficeAgent.Studio - designed .pptx and .docx from a one-line brief.
 
@@ -217,14 +266,19 @@ internal static class StudioProgram
           doc, document     a Word report, 12-18 blocks
           invoice           a Word invoice; totals are computed, not by the model
           manual            a Word manual with numbered sections and steps
+          design-system     generate validated brand JSON and preview files
+          (brand)           alias for design-system; makes one model call
           backdrop          background-opacity samples; makes NO model call,
           (background)      so it is the quickest way to prove document generation
 
-        The brief is optional. Without one, a sample quarterly-review brief is used.
+        The brief is optional. Content commands use a sample quarterly review; design-system
+        uses a sample technology-consultancy brand brief.
 
         Environment
           OFFICEAGENT_STUDIO_OUTPUT   where files are written (default ./output)
           OFFICEAGENT_STUDIO_BRAND    palette: default, meridian
+          OFFICEAGENT_STUDIO_BRAND_FILE
+                                      generated design-system JSON (instead of BRAND)
           OFFICEAGENT_STUDIO_CLIENT   name on the cover and in the footer
           OFFICEAGENT_STUDIO_MODEL_PROVIDER
                                       claude (default) or azure-foundry
@@ -236,6 +290,7 @@ internal static class StudioProgram
 
         Examples
           dotnet run --project src/OfficeAgent.Studio -- deck "Series B narrative for a robotics company"
+          dotnet run --project src/OfficeAgent.Studio -- design-system "Restrained Dutch technology consultancy"
           dotnet run --project src/OfficeAgent.Studio -- backdrop
         """);
 }

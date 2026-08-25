@@ -1,5 +1,12 @@
 # The design system
 
+`DesignSystem` can be selected from the compiled registry or loaded from a generated JSON
+artifact. `dotnet run --project src/OfficeAgent.Studio -- design-system "brand brief"`
+creates the artifact plus PowerPoint and Word previews. Generated systems use the same
+composers as registered systems, but first pass runtime checks for colour syntax, every
+text/ground contrast pairing, portable fonts, type hierarchy, geometry bounds and schema
+version. The model chooses one validated system; document-content agents cannot modify it.
+
 What `DesignSystem.cs` controls, what it doesn't, and why the palette is shaped the way it
 is.
 
@@ -11,7 +18,7 @@ result in `DesignSystem.Brands`.
 | Group | Properties |
 | --- | --- |
 | Palette | `Ink`, `InkDeep`, `Paper`, `Wash`, `WashDeep`, `Body`, `Muted`, `MutedReverse`, `Accent`, `AccentText`, `AccentReverse`, `Reverse` |
-| Type | `DisplayFont`, `TextFont`, and eleven sizes — `DisplaySize`, `TitleSize`, `SubtitleSize`, `BodySize`, `CaptionSize`, `StatSize`, and five `Document*` sizes |
+| Type | `DisplayFont`, `TextFont`, and twelve sizes — `DisplaySize`, `TitleSize`, `SubtitleSize`, `BodySize`, `CaptionSize`, `StatSize`, and six `Document*` sizes |
 | Measures | `Margin`, `RuleHeight`, `DocumentMeasureInset`, `DocumentIndent`, `PageBackdropOpacity`, `CoverLift` |
 | Mark | `Wordmark`, `WordmarkDot`, `EyebrowUppercase` |
 

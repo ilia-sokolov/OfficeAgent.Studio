@@ -32,6 +32,7 @@ internal static partial class PlanValidator
             DocumentPlanned document => Document(document),
             InvoicePlanned invoice => Invoice(invoice),
             ManualPlanned manual => Manual(manual),
+            DesignSystemPlan design => DesignSystemPlanValidator.NormalizeAndValidate(design),
             _ => throw new InvalidOperationException($"No plan validator is registered for {typeof(T).Name}.")
         };
 

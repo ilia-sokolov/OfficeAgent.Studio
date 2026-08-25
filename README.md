@@ -27,6 +27,7 @@ the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework).
 | `doc` | `.docx` | 12–18 blocks: cover page, headings, bullets, a pull quote, a table |
 | `invoice` | `.docx` | Line items, computed totals, payment terms |
 | `manual` | `.docx` | Numbered sections and steps that renumber when edited |
+| `design-system` | `.json` + preview `.pptx`/`.docx` | Validated reusable system generated from a brand brief |
 | `backdrop` | `.pptx` + `.docx` | Background-opacity samples. **Makes no model call** |
 
 ![Two pages of a generated Word report: a dark cover page, and a body page with a ruled table, a running head and a page number](docs/images/report.png)
@@ -117,6 +118,7 @@ You do not need Microsoft Office to generate files — only to open them.
 | `OFFICEAGENT_STUDIO_OUTPUT` | `./output` | Where files are written |
 | `OFFICEAGENT_STUDIO_CLIENT` | `Northwind Traders` | The name on the cover and in the footer |
 | `OFFICEAGENT_STUDIO_BRAND` | `default` | Which palette: `default` or `meridian`. An unknown name stops the run |
+| `OFFICEAGENT_STUDIO_BRAND_FILE` | — | Generated design-system JSON; cannot be combined with `OFFICEAGENT_STUDIO_BRAND` |
 | `OFFICEAGENT_STUDIO_MODEL_PROVIDER` | `claude` | Model client: `claude` or `azure-foundry` |
 | `OFFICEAGENT_STUDIO_CLAUDE_EXECUTABLE` | `claude` | Claude Code executable or absolute path |
 | `OFFICEAGENT_STUDIO_CLAUDE_TIMEOUT_SECONDS` | `300` | Positive Claude CLI timeout in seconds |
@@ -196,8 +198,9 @@ Brief ──▶ StudioAgent ──▶ JSON plan ──▶ Composer ──▶ Off
 src/OfficeAgent.Studio/
   Program.cs               CLI and dependency injection
   ModelClientFactory.cs    Claude / Azure Foundry configuration
-  StudioAgent.cs           Four agents and their instructions
+  StudioAgent.cs           Content and design agents with their instructions
   PlanValidator.cs         model plan normalization and validation
+  GeneratedDesignSystem.cs generated brand schema, validation and persistence
   Brief.cs, Templates.cs   The JSON shapes the model returns
   ClaudeCodeChatClient.cs  IChatClient over the Claude Code CLI
   Composition.cs           staged composition and atomic publication
@@ -240,9 +243,35 @@ success-looking partial document.
 
 ## Branding
 
-A second brand ships as a worked example. `meridian` is deliberately unlike the default in
-every dimension the system controls — cooler ink, a blue accent instead of orange, sans
-display type instead of serif — so you can see what changes and what does not:
+Generate a reusable design system from a brand brief:
+
+```powershell
+dotnet run --project src/OfficeAgent.Studio -- design-system `
+  "Restrained Dutch technology consultancy; precise, modern and credible"
+```
+
+The command makes one model call and publishes three files with the same timestamp:
+
+- `design-system-*.json` — the reusable, reviewable source of truth.
+- `design-system-preview-*.pptx` and `.docx` — real Office previews using that system.
+
+Use the artifact for later runs without regenerating it:
+
+```powershell
+$env:OFFICEAGENT_STUDIO_BRAND_FILE = "C:\path\to\design-system-....json"
+dotnet run --project src/OfficeAgent.Studio -- both "Quarterly review"
+```
+
+The generated file is not arbitrary styling code. It can choose a bounded palette, portable
+font families, type scales, margins and backdrop strengths. Before publication, the runtime
+normalizes hexadecimal colours and rejects unreadable contrast, unsupported fonts, inverted
+type hierarchies, invalid geometry, unknown fields and unsupported schema versions. Content
+agents still cannot alter styling per slide or paragraph.
+
+For a hand-authored system, a second brand ships as a worked example. `meridian` is
+deliberately unlike the default in every dimension the system controls — cooler ink, a blue
+accent instead of orange, sans display type instead of serif — so you can see what changes
+and what does not:
 
 ```bash
 OFFICEAGENT_STUDIO_BRAND=meridian dotnet run --project src/OfficeAgent.Studio -- backdrop
@@ -302,7 +331,7 @@ the palette carries two greys and three accents.
 dotnet test
 ```
 
-73 tests, and it is worth knowing what they cover.
+86 tests, and it is worth knowing what they cover.
 
 - **Contrast**, for every registered brand: the text-and-ground pairings listed in
   `ContrastTests.Pairings()`. That list is maintained by hand — adding a colour to a
@@ -315,6 +344,8 @@ dotnet test
 - **Process cancellation**: cancelling a model request terminates the CLI process tree.
 - **Model-client configuration**: Claude defaults, Foundry aliases, endpoint/deployment
   validation, Entra/key construction and provider-neutral failure reporting.
+- **Generated design systems**: colour normalization, contrast, font and type-scale safety,
+  strict JSON, atomic persistence, reusable loading and complete preview command output.
 - **Generated output**: fixed plans compose every `.pptx` and `.docx` type, publish without
   temporary files, open through the Open XML SDK, pass the Office 2019 schema validator and
   retain key semantic content.

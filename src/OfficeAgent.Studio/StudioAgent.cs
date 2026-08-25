@@ -1,12 +1,13 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 
 namespace OfficeAgent.Studio;
 
 /// <summary>
-/// The agent: it decides what the document says, and hands the saying of it to the
-/// composers.
+/// The agent set: content agents decide what documents say, while a separate brand agent
+/// can propose one constrained design system for the composers.
 /// </summary>
 /// <remarks>
 /// The instructions are the interesting part of this demo. They do not ask for a beautiful
@@ -151,10 +152,63 @@ public sealed class StudioAgent
         is the JSON object and nothing else - the caller parses it, no human reads it.
         """;
 
+    private const string DesignSystemInstructions = """
+        You are a brand designer creating ONE reusable design system, not document content.
+        Given a client and brand brief, return a conservative, production-safe JSON artifact.
+        The same artifact will style every slide and page; do not make per-slide decisions.
+
+        Return ONLY this JSON object, with every field present and no markdown fence:
+
+        {
+          "schemaVersion": 1,
+          "name": "Short system name",
+          "rationale": "Two or three sentences explaining the visual decisions.",
+          "wordmark": "client name or a concise brand name",
+          "eyebrowUppercase": true,
+          "palette": {
+            "ink": "12161C", "inkDeep": "23282F", "paper": "FFFFFF",
+            "wash": "F4F1ED", "washDeep": "EAE4DA", "body": "2B3138",
+            "muted": "676C71", "mutedReverse": "A8AEB5",
+            "accent": "C8632B", "accentText": "A34E1F",
+            "accentReverse": "E8834A", "reverse": "FFFFFF"
+          },
+          "typography": {
+            "displayFont": "Georgia", "textFont": "Calibri",
+            "displaySize": 108, "titleSize": 72, "subtitleSize": 40,
+            "bodySize": 28, "captionSize": 20, "statSize": 96,
+            "documentTitleSize": 72, "documentHeadingSize": 40,
+            "documentSubheadingSize": 24, "documentBodySize": 21,
+            "documentQuoteSize": 28, "documentCaptionSize": 19
+          },
+          "geometry": {
+            "margin": 88, "documentMeasureInset": 2200,
+            "documentIndent": 340, "ruleHeight": 6
+          },
+          "backdrop": { "pageOpacity": 0.55, "coverLift": 0.10 }
+        }
+
+        Rules:
+        - Colours are six hexadecimal digits without '#'. Ink is a dark cover colour; paper
+          is light; wash and washDeep are subtle paper tints.
+        - Normal-size text must reach 4.5:1 contrast against its actual ground. Accent on
+          wash is large text and must reach 3:1. If uncertain, choose conservative tones.
+        - accentText is the darker text-safe version of accent. accentReverse is a light
+          version that reads on ink. mutedReverse is lighter than muted.
+        - Fonts must be chosen from Arial, Aptos, Calibri, Cambria, Georgia, Tahoma,
+          Times New Roman, Trebuchet MS, or Verdana. One family for both roles is allowed.
+        - Keep the supplied numeric scale unless the brief clearly calls for a different
+          density. Sizes are half-points, not points. Never alter schemaVersion.
+        - The rationale explains the system but is not rendered into documents.
+
+        NEVER ask a clarifying question. Make restrained decisions from the brief. Your
+        entire reply is the JSON object and nothing else.
+        """;
+
     private readonly AIAgent _deckAgent;
     private readonly AIAgent _documentAgent;
     private readonly AIAgent _invoiceAgent;
     private readonly AIAgent _manualAgent;
+    private readonly AIAgent _designSystemAgent;
 
     public StudioAgent(IChatClient chat)
     {
@@ -162,6 +216,8 @@ public sealed class StudioAgent
         _documentAgent = new ChatClientAgent(chat, instructions: DocumentInstructions, name: "document-editor");
         _invoiceAgent = new ChatClientAgent(chat, instructions: InvoiceInstructions, name: "billing-administrator");
         _manualAgent = new ChatClientAgent(chat, instructions: ManualInstructions, name: "technical-writer");
+        _designSystemAgent = new ChatClientAgent(
+            chat, instructions: DesignSystemInstructions, name: "brand-designer");
     }
 
     public Task<InvoicePlanned> PlanInvoiceAsync(Brief brief, CancellationToken ct = default) =>
@@ -175,6 +231,9 @@ public sealed class StudioAgent
 
     public Task<DocumentPlanned> PlanDocumentAsync(Brief brief, CancellationToken ct = default) =>
         AskAsync<DocumentPlanned>(_documentAgent, brief, ct);
+
+    public Task<DesignSystemPlan> PlanDesignSystemAsync(Brief brief, CancellationToken ct = default) =>
+        AskAsync<DesignSystemPlan>(_designSystemAgent, brief, ct);
 
     /// <summary>
     /// How many times a plan is asked for before giving up. A model asked for JSON returns
@@ -310,6 +369,7 @@ public sealed class StudioAgent
 
     private static readonly JsonSerializerOptions Json = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 }

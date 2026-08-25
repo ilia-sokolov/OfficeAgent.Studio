@@ -1,18 +1,74 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using OfficeAgent.Core;
 using OfficeAgent.Core.DocumentProviders;
 using OfficeAgent.PowerPoint;
 using OfficeAgent.Studio;
 using OfficeAgent.Word;
+using System.Text.Json;
 using Xunit;
 
 namespace OfficeAgent.Studio.Tests;
 
 public class CompositionIntegrationTests
 {
+    [Fact]
+    public async Task Design_system_command_publishes_reusable_json_and_valid_previews()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "officeagent-studio-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var reply = JsonSerializer.Serialize(TestPlans.DesignSystem());
+            var settings = new Dictionary<string, string?>
+            {
+                ["OFFICEAGENT_STUDIO_OUTPUT"] = root,
+                ["OFFICEAGENT_STUDIO_CLIENT"] = "Northwind Traders"
+            };
+
+            var exitCode = await StudioProgram.RunAsync(
+                new[] { "design-system", "Restrained technology consultancy" },
+                () => new ReplyChatClient(reply),
+                name => settings.GetValueOrDefault(name));
+
+            Assert.Equal(0, exitCode);
+            var artifact = Assert.Single(Directory.EnumerateFiles(root, "design-system-*.json"));
+            var deck = Assert.Single(Directory.EnumerateFiles(root, "design-system-preview-*.pptx"));
+            var document = Assert.Single(Directory.EnumerateFiles(root, "design-system-preview-*.docx"));
+            Assert.Equal("northwind", DesignSystemFiles.Load(artifact).Wordmark);
+            AssertSchemaValid(deck);
+            AssertSchemaValid(document);
+            Assert.Empty(Directory.EnumerateFiles(root, "partial-*", SearchOption.TopDirectoryOnly));
+
+            settings["OFFICEAGENT_STUDIO_BRAND_FILE"] = artifact;
+            var modelRequested = false;
+            var reuseExitCode = await StudioProgram.RunAsync(
+                new[] { "backdrop" },
+                () =>
+                {
+                    modelRequested = true;
+                    throw new InvalidOperationException("Backdrop must not create a model client.");
+                },
+                name => settings.GetValueOrDefault(name));
+
+            Assert.Equal(0, reuseExitCode);
+            Assert.False(modelRequested);
+            var reusedDeck = Assert.Single(Directory.EnumerateFiles(root, "backgrounds-*.pptx"));
+            var reusedDocument = Assert.Single(Directory.EnumerateFiles(root, "backgrounds-*.docx"));
+            AssertSchemaValid(reusedDeck);
+            AssertSchemaValid(reusedDocument);
+            Assert.Empty(Directory.EnumerateFiles(root, "partial-*", SearchOption.TopDirectoryOnly));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task Every_output_type_is_published_complete_and_schema_valid()
     {
@@ -40,7 +96,9 @@ public class CompositionIntegrationTests
                 "manual.docx",
                 (name, ct) => new ManualComposer(client, design).ComposeAsync(TestPlans.Manual(), name, ct));
 
-            var backdrop = new BackdropSample(client, design);
+            var generatedDesign = DesignSystemPlanValidator.ToDesignSystem(
+                DesignSystemPlanValidator.NormalizeAndValidate(TestPlans.DesignSystem()));
+            var backdrop = new BackdropSample(client, generatedDesign);
             await publisher.ComposeAsync(
                 "backgrounds.pptx",
                 (name, ct) => backdrop.ComposeDeckAsync(name, ct));
@@ -134,4 +192,23 @@ public class CompositionIntegrationTests
     private static string DocumentText(WordprocessingDocument document) =>
         document.MainDocumentPart?.Document?.InnerText
         ?? throw new InvalidDataException("The generated Word document has no main document part.");
+
+    private sealed class ReplyChatClient(string reply) : IChatClient
+    {
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, reply)));
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose() { }
+    }
 }
