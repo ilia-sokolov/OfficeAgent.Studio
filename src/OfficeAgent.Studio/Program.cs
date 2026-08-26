@@ -269,7 +269,7 @@ internal static class StudioProgram
           manual            a Word manual with numbered sections and steps
           design-system     generate validated brand JSON and preview files
           (brand)           alias for design-system; makes one model call
-          backdrop          background-opacity samples; makes NO model call,
+          backdrop          background and cover samples; makes no model call,
           (background)      so it is the quickest way to prove document generation
 
         The brief is optional. Content commands use a sample quarterly review; design-system
@@ -280,15 +280,15 @@ internal static class StudioProgram
           OFFICEAGENT_STUDIO_BRAND    palette: default, meridian
           OFFICEAGENT_STUDIO_BRAND_FILE
                                       generated design-system JSON (instead of BRAND)
-          OFFICEAGENT_STUDIO_CLIENT   name on the cover and in the footer
+          OFFICEAGENT_STUDIO_CLIENT   name passed to the model and report footer
           OFFICEAGENT_STUDIO_COVER_MODE
                                       dark or light; overrides the selected design system
           OFFICEAGENT_STUDIO_LOGO     non-interlaced PNG used on covers and letterheads
-          OFFICEAGENT_STUDIO_LOGO_ALT accessible logo description (default: brand name)
+          OFFICEAGENT_STUDIO_LOGO_ALT accessible description (wordmark or "Brand logo")
           OFFICEAGENT_STUDIO_MODEL_PROVIDER
                                       claude (default) or azure-foundry
 
-        Azure Foundry
+        Microsoft Foundry
           AZURE_OPENAI_ENDPOINT       Foundry/Azure OpenAI endpoint
           AZURE_OPENAI_DEPLOYMENT     deployed model name (AZURE_OPENAI_MODEL also works)
           AZURE_OPENAI_API_KEY        optional; otherwise DefaultAzureCredential is used

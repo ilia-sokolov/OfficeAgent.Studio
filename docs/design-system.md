@@ -1,124 +1,158 @@
-# The design system
+# Design system reference
 
-`DesignSystem` can be selected from the compiled registry or loaded from a generated JSON
-artifact. `dotnet run --project src/OfficeAgent.Studio -- design-system "brand brief"`
-creates the artifact plus PowerPoint and Word previews. Generated systems use the same
-composers as registered systems, but first pass runtime checks for colour syntax, every
-text/ground contrast pairing, portable fonts, type hierarchy, geometry bounds and schema
-version. The model chooses one validated system; document-content agents cannot modify it.
+`DesignSystem` keeps styling separate from model-generated content. Content agents choose
+document roles and text. Composers choose fonts, colors, sizes, spacing, and positions from
+one validated system.
 
-What `DesignSystem.cs` controls, what it doesn't, and why the palette is shaped the way it
-is.
+Use either a registered C# system or a generated JSON artifact.
 
-## What a brand can change
+## Select a design system
 
-Everything in the `DesignSystem` record, by writing `Default with { … }` and registering the
-result in `DesignSystem.Brands`.
+Select one of the registered systems:
+
+```powershell
+$env:OFFICEAGENT_STUDIO_BRAND = "meridian"
+dotnet run --project src/OfficeAgent.Studio -- backdrop
+```
+
+Generate and reuse a JSON system:
+
+```powershell
+dotnet run --project src/OfficeAgent.Studio -- design-system `
+  "Restrained Dutch technology consultancy; precise, modern, and credible"
+
+$env:OFFICEAGENT_STUDIO_BRAND_FILE = "C:\brand\design-system.json"
+dotnet run --project src/OfficeAgent.Studio -- both "Quarterly review"
+```
+
+Don't set `OFFICEAGENT_STUDIO_BRAND` and `OFFICEAGENT_STUDIO_BRAND_FILE` together.
+
+## Define a registered system
+
+Create a value from `DesignSystem.Default`, then add it to `DesignSystem.Brands`:
+
+```csharp
+public static readonly DesignSystem Acme = Default with
+{
+    Ink = "1A1A1A",
+    Paper = "FFFFFF",
+    Accent = "0057B8",
+    AccentText = "004489",
+    AccentReverse = "5FA8FF",
+    DisplayFont = "Georgia",
+    TextFont = "Arial",
+    Wordmark = "acme",
+    CoverMode = CoverMode.Light
+};
+```
+
+Registration makes the system available to the CLI and includes it in the contrast theory
+data. Run `dotnet test` after adding or changing a system.
+
+## Properties that affect output
 
 | Group | Properties |
 | --- | --- |
 | Palette | `Ink`, `InkDeep`, `Paper`, `Wash`, `WashDeep`, `Body`, `Muted`, `MutedReverse`, `Accent`, `AccentText`, `AccentReverse`, `Reverse` |
-| Type | `DisplayFont`, `TextFont`, and twelve sizes - `DisplaySize`, `TitleSize`, `SubtitleSize`, `BodySize`, `CaptionSize`, `StatSize`, and six `Document*` sizes |
+| Slide type | `DisplayFont`, `TextFont`, `DisplaySize`, `TitleSize`, `SubtitleSize`, `BodySize`, `CaptionSize`, `StatSize` |
+| Document type | `DocumentTitleSize`, `DocumentHeadingSize`, `DocumentSubheadingSize`, `DocumentBodySize`, `DocumentQuoteSize`, `DocumentCaptionSize` |
 | Measures | `Margin`, `RuleHeight`, `DocumentMeasureInset`, `DocumentIndent`, `PageBackdropOpacity`, `CoverLift` |
-| Cover and mark | `CoverMode`, `Wordmark`, `WordmarkDot`, `EyebrowUppercase`; `Logo` is attached at runtime |
+| Cover and mark | `CoverMode`, `Wordmark`, `WordmarkDot`, `EyebrowUppercase` |
 
-Two type scales exist on purpose. A slide is read across a room and a page at arm's length,
-so `BodySize` (14pt) and `DocumentBodySize` (10.5pt) are different decisions, not an
-oversight.
+Slides and pages use separate type scales because they are read at different distances.
+For example, the default slide body is 14 pt and the document body is 10.5 pt.
 
-## What a brand cannot change yet
+## Configure covers and logos
 
-These are literals in the composers rather than properties. If you are adapting this for a
-real brand, this is the list to budget for.
+`CoverMode` controls the first deck and report cover:
 
-**Deck** (`DeckComposer.cs`)
+- `Dark` uses the ink ramp and reverse text roles.
+- `Light` uses the paper ramp and dark text roles.
 
-- The vertical grid. `Frame.From` places the eyebrow at `top`, the rule at `top + 38`, the
-  title at `top + 66`, and content 30px below the title.
-- The two layouts: `top = 250` for centred slides, `top = 84` for the rest.
-- The accent rule is 96px long. `RuleHeight` sets its thickness; nothing sets its length.
-- Stat card height, caption gap, and the fact that the card is filled `Wash`.
-- Which roles invert to an ink ground (`section` and `closing`). `CoverMode` changes only
-  the first cover; reverse divider roles remain dark by design.
-- The transition (`fade`, 400ms) and the 46-character threshold that drops a long title to
-  the smaller size.
+Section and closing slides remain dark in either mode. Generated JSON stores `coverMode` as
+`dark` or `light`. A schema-version-1 artifact without `coverMode` defaults to `dark`.
 
-**Document** (`DocumentComposer.cs`)
+Override the selected system for one run:
 
-- Every vertical space is a literal in `StyleFor` - 2400, 400, 280, 180 twips and so on.
-  There is no spacing scale, which makes spacing the least brandable thing in a system whose
-  whole subject is consistency.
-- Border weights, the quote indent multiplier, and the 58-character running-head truncation.
+```powershell
+$env:OFFICEAGENT_STUDIO_COVER_MODE = "light"
+```
 
-**Absent entirely**
+Logo bytes aren't stored in generated JSON. Supply a logo at runtime:
 
-- Line height, letter-spacing, bullet glyph, table style.
-- Page size and margins - see the README's Limits.
-- Slide geometry. `SlideWidth` and `SlideHeight` are settable and inert: the real slide size
-  is fixed by OfficeAgent.NET's blank deck, so changing them moves content off a canvas that
-  did not change.
+```powershell
+$env:OFFICEAGENT_STUDIO_LOGO = "C:\brand\acme-logo.png"
+$env:OFFICEAGENT_STUDIO_LOGO_ALT = "Acme logo"
+```
 
-## Cover mode and logo assets
+The loader accepts bounded, non-interlaced RGB, RGBA, grayscale, and indexed PNGs. Word
+uses an image with alt text on report and manual covers and invoice letterheads. PowerPoint
+composites the logo into the generated cover backdrop. Without a logo, an invoice uses
+`Wordmark` as text.
 
-Generated artifacts store `coverMode` as `dark` or `light`. The runtime maps the complete
-cover treatment as a unit: gradient stops plus title, subtitle and eyebrow colours. It
-checks those text roles against both ends of the rendered gradient. Set
-`OFFICEAGENT_STUDIO_COVER_MODE` to override the artifact for one run without editing it.
+## Meet contrast requirements
 
-Logo bytes do not belong in the portable JSON. Set `OFFICEAGENT_STUDIO_LOGO` to a bounded,
-non-interlaced PNG and optionally set `OFFICEAGENT_STUDIO_LOGO_ALT`. The asset is validated
-before any output is created. Word receives an inline image with alt text; the deck cover
-receives the transparent logo composited into its generated PNG backdrop. If no image is
-supplied, the invoice retains the text `Wordmark` fallback.
+`DesignSystem.Contrast` calculates the WCAG contrast ratio for each text and background
+pair. Tests require:
 
-## Why two greys and three accents
+- 4.5:1 for normal text.
+- 3:1 for large text, currently only the 48 pt statistic.
 
-Contrast is arithmetic, not taste, and the palette is shaped by measuring it.
+The palette separates roles that can't safely share a color:
 
-`DesignSystem.Contrast` computes the
-[WCAG ratio](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html) between two
-colours. Normal text needs 4.5:1; large text - 18pt, or 14pt bold - needs 3.0:1.
+- `Muted` is secondary text on paper. `MutedReverse` is secondary text on ink.
+- `Accent` is a rule or fill and can be bright. `AccentText` is the text-safe paper
+  variant. `AccentReverse` is the text-safe ink variant.
 
-The first palette set captions in `#8A9199`. That is **3.2:1** on white. It looked refined
-on the monitor it was chosen on and was unreadable in print. Fixing it properly produced
-three rules:
+Tests also measure composited colors:
 
-**Two muted greys.** A grey dark enough to read on paper is too light to read on ink. The
-pair is `Muted` and `MutedReverse`, and a test asserts the reverse one is the lighter of the
-two - the mistake worth catching is setting both to the same value, which loses the cover
-subtitle.
+- `RenderedWash` blends `WashDeep` over `Paper` at `PageBackdropOpacity`.
+- `CoverLightest` applies `CoverLift` to the selected cover start color.
+- Cover text is checked against both ends of both light and dark gradients so the runtime
+  override remains safe.
 
-**Three accents.** `Accent` is a mark: a rule, a fill, the wordmark dot. It *may* fall below
-4.5:1, because a 6px rule is not text - but it does not have to. `AccentText` is the tone
-used where the accent is a word, and it is the only one required to reach 4.5:1 on paper.
-`AccentReverse` is light enough to read on ink.
+See [WCAG 2.2 contrast minimum](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html)
+for the thresholds and large-text definition.
 
-A brand whose accent already reads well as small text sets `AccentText` to the same value
-and is done. The split exists so that a bright mark *can* have a darker twin, not so that
-every brand must own two oranges.
+## Fixed layout decisions
 
-**Measure what renders, not what you wrote.** Two grounds are composites:
+The following values are literals in composers rather than design-system properties.
 
-- The page wash is `WashDeep` over `Paper` at `PageBackdropOpacity`. Checking type against
-  the raw `WashDeep` would fail a page that never prints that dark - so `RenderedWash`
-  composites it first.
-- The cover backdrop lifts toward white in one corner. `CoverLightest` applies that lift to
-  the selected dark or light start colour, and each selected text role is also measured
-  against the other gradient stop.
+### Deck
 
-## The tests
+- The vertical grid and the centered and top-aligned layout origins.
+- The 96 px rule length, stat-card height, and caption gap.
+- The `Wash` stat-card fill.
+- Dark `section` and `closing` slides.
+- The 400 ms fade transition.
+- The title-length threshold that selects the smaller title size.
 
-`ContrastTests` generates its cases from `DesignSystem.Brands`, so registering a brand is
-enough to have it measured - nobody has to remember to add it. Each case carries the
-threshold its size earns, and the one place that claims the large-text exemption (the 48pt
-stat number) claims it explicitly rather than by accident.
+### Word documents
 
-Two things the suite does **not** do, which matter if you are relying on a green build:
+- Paragraph spacing, border weights, and quote-indent multiplier.
+- Running-head truncation.
+- Page size and margins. OfficeAgent.Studio doesn't write them; layout calculations assume
+  Letter size and 1-inch margins.
 
-- **The pairings are a hand-written list.** Adding a colour to a composer does not add a
-  case. `ContrastTests.Pairings()` is where they live, and a new text-on-ground combination
-  has to be added there by hand.
-- **It only measures colour.** Heading semantics, reading order, alt text and document
-  language are all unaddressed - see the README's Limits. A green build is evidence about
-  contrast, while the separate composition integration tests are evidence about Open XML
-  validity and key generated content. Neither is a visual or full accessibility audit.
+### Not supported
+
+- Line height, letter spacing, and a configurable bullet glyph or table style.
+- A configurable slide canvas. `SlideWidth` and `SlideHeight` affect positioning
+  calculations but don't resize the OfficeAgent.NET blank deck.
+- An Office theme or embedded fonts.
+
+## Validate changes
+
+Run the complete suite:
+
+```bash
+dotnet test
+```
+
+`ContrastTests.Pairings()` is a maintained list of rendered text and background pairs. Add
+a case when a composer introduces a new pairing. The test suite also validates generated
+JSON, logo input, cover modes, atomic publication, and Open XML output.
+
+These checks don't replace visual review or a complete accessibility audit. They don't
+validate reading order, document language, heading semantics, or PowerPoint alt text for a
+logo composited into a background.
